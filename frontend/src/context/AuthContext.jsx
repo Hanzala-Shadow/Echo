@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState } from 'react';
 
+// Determine the base URL based on environment
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8080/api' 
+  : 'http://backend:8080/api';
+
 const AuthContext = createContext();
 
 export const useAuth = () => {
@@ -12,47 +17,83 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    // Check if user is already logged in from localStorage
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
   const [loading, setLoading] = useState(false);
 
+  // LOGIN
   const login = async (email, password) => {
     setLoading(true);
-    console.log('Login attempt:', { email, password });
-    
     try {
-      // Demo credentials check
-      if (email === 'alice@example.com' && password === 'StrongPass123!') {
-        const demoUser = {
-          id: 1,
-          username: 'alice',
-          email: 'alice@example.com',
-          avatar: null,
-          createdAt: new Date().toISOString()
-        };
-        
-        setUser(demoUser);
-        localStorage.setItem('user', JSON.stringify(demoUser));
-        console.log('Demo user logged in:', demoUser);
-        setLoading(false);
-        return demoUser;
-      } else {
-        setLoading(false);
-        throw new Error('Invalid email or password');
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (!response.ok) {
+        throw new Error("Invalid credentials");
       }
-    } catch (error) {
+
+      const data = await response.json();
+      const token = data.token;
+
+      const loggedInUser = { email, token };
+      setUser(loggedInUser);
+      localStorage.setItem("user", JSON.stringify(loggedInUser));
+
+      return loggedInUser;
+    } finally {
       setLoading(false);
-      throw error;
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  // REGISTER
+  const register = async (username, email, password) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, email, password })
+      });
+
+      if (!response.ok) {
+        throw new Error("Registration failed");
+      }
+
+      const data = await response.json();
+
+      // Auto-login after registration (optional)
+      const loggedInUser = { 
+        id: data.userId, 
+        username: data.username, 
+        email: data.email, 
+        token: null // will need login to get JWT
+      };
+
+      setUser(loggedInUser);
+      localStorage.setItem("user", JSON.stringify(loggedInUser));
+
+      return loggedInUser;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const value = { user, loading, login, logout };
+  // LOGOUT
+  const logout = async () => {
+    if (user?.token) {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${user.token}` }
+      });
+    }
+    setUser(null);
+    localStorage.removeItem("user");
+  };
+
+  const value = { user, loading, login, register, logout };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
