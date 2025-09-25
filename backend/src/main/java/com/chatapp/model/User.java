@@ -23,6 +23,9 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Column(nullable = false)
+    private Boolean onlineStatus = false;
+
     // Getters and Setters
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
@@ -38,4 +41,7 @@ public class User {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public Boolean getOnlineStatus() { return onlineStatus; }
+    public void setOnlineStatus(Boolean onlineStatus) { this.onlineStatus = onlineStatus; }
 }

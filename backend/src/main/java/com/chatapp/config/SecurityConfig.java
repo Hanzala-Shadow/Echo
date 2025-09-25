@@ -43,7 +43,14 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable()) // disable CSRF for APIs
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                .requestMatchers(
+                    "/api/auth/register",
+                    "/api/auth/login",
+                    "/ws/**",
+                    "/network/qr",
+                    "/network/ip",
+                    "/api/mdns"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(new JwtAuthFilter(jwtService, userRepository, sessionRepository),
@@ -65,41 +72,41 @@ public class SecurityConfig {
             this.userRepository = userRepository;
             this.sessionRepository = sessionRepository;
         }
-@Override
-protected void doFilterInternal(HttpServletRequest request,
-                                HttpServletResponse response,
-                                FilterChain filterChain) throws ServletException, IOException {
-    String authHeader = request.getHeader("Authorization");
 
-    if (authHeader != null && authHeader.startsWith("Bearer ")) {
-        String token = authHeader.substring(7);
+        @Override
+        protected void doFilterInternal(HttpServletRequest request,
+                                        HttpServletResponse response,
+                                        FilterChain filterChain) throws ServletException, IOException {
+            String authHeader = request.getHeader("Authorization");
 
-        // Validate session
-        var sessionOpt = sessionRepository.findByToken(token);
-        if (sessionOpt.isPresent()) {
-            String email = jwtService.extractEmail(token);
-            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
 
-            if (userOpt.isPresent() && jwtService.validateToken(token, userOpt.get())) {
-                // Wrap user as Spring UserDetails with at least one role
-                User user = userOpt.get();
-                org.springframework.security.core.userdetails.UserDetails userDetails =
-                        org.springframework.security.core.userdetails.User
-                                .withUsername(user.getEmail())
-                                .password("") // no need for real password, JWT already validated
-                                .authorities("ROLE_USER") // or map roles from DB later
-                                .build();
+                // Validate session
+                var sessionOpt = sessionRepository.findByToken(token);
+                if (sessionOpt.isPresent()) {
+                    String email = jwtService.extractEmail(token);
+                    Optional<User> userOpt = userRepository.findByEmail(email);
 
-                UsernamePasswordAuthenticationToken authToken =
-                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    if (userOpt.isPresent() && jwtService.validateToken(token, userOpt.get())) {
+                        // Wrap user as Spring UserDetails with at least one role
+                        User user = userOpt.get();
+                        org.springframework.security.core.userdetails.UserDetails userDetails =
+                                org.springframework.security.core.userdetails.User
+                                        .withUsername(user.getEmail())
+                                        .password("") // no need for real password, JWT already validated
+                                        .authorities("ROLE_USER") // or map roles from DB later
+                                        .build();
 
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                        UsernamePasswordAuthenticationToken authToken =
+                                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                    }
+                }
             }
+
+            filterChain.doFilter(request, response);
         }
-    }
-
-    filterChain.doFilter(request, response);
-}
-
     }
 }

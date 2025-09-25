@@ -73,12 +73,16 @@ public class AuthService {
     // ======================
     // LOGOUT
     // ======================
-    public void logout(String token) {
-        Optional<Session> sessionOpt = sessionRepository.findByToken(token);
-        if (sessionOpt.isPresent()) {
-            sessionRepository.delete(sessionOpt.get());
-        }
+   public Long logout(String token) {
+    Optional<Session> sessionOpt = sessionRepository.findByToken(token);
+    if (sessionOpt.isPresent()) {
+        Session session = sessionOpt.get();
+        Long userId = session.getUser().getUserId();
+        sessionRepository.delete(session);
+        return userId;
     }
+    return null;
+}
 
     // ======================
     // VALIDATE SESSION
