@@ -18,8 +18,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Optional;
 
 @Configuration
@@ -41,7 +45,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // disable CSRF for APIs
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // newline for CORS configuration
+            .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                 .anyRequest().authenticated()
@@ -50,6 +55,23 @@ public class SecurityConfig {
                              UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // ADD THIS CORS CONFIGURATION METHOD
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(Arrays.asList( 
+            "http://localhost:5173",
+            "http://127.0.0.1:5173"
+        ));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     // ========================
@@ -65,41 +87,41 @@ public class SecurityConfig {
             this.userRepository = userRepository;
             this.sessionRepository = sessionRepository;
         }
-@Override
-protected void doFilterInternal(HttpServletRequest request,
-                                HttpServletResponse response,
-                                FilterChain filterChain) throws ServletException, IOException {
-    String authHeader = request.getHeader("Authorization");
 
-    if (authHeader != null && authHeader.startsWith("Bearer ")) {
-        String token = authHeader.substring(7);
+        @Override
+        protected void doFilterInternal(HttpServletRequest request,
+                                        HttpServletResponse response,
+                                        FilterChain filterChain) throws ServletException, IOException {
+            String authHeader = request.getHeader("Authorization");
 
-        // Validate session
-        var sessionOpt = sessionRepository.findByToken(token);
-        if (sessionOpt.isPresent()) {
-            String email = jwtService.extractEmail(token);
-            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
 
-            if (userOpt.isPresent() && jwtService.validateToken(token, userOpt.get())) {
-                // Wrap user as Spring UserDetails with at least one role
-                User user = userOpt.get();
-                org.springframework.security.core.userdetails.UserDetails userDetails =
-                        org.springframework.security.core.userdetails.User
-                                .withUsername(user.getEmail())
-                                .password("") // no need for real password, JWT already validated
-                                .authorities("ROLE_USER") // or map roles from DB later
-                                .build();
+                // Validate session
+                var sessionOpt = sessionRepository.findByToken(token);
+                if (sessionOpt.isPresent()) {
+                    String email = jwtService.extractEmail(token);
+                    Optional<User> userOpt = userRepository.findByEmail(email);
 
-                UsernamePasswordAuthenticationToken authToken =
-                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    if (userOpt.isPresent() && jwtService.validateToken(token, userOpt.get())) {
+                        // Wrap user as Spring UserDetails with at least one role
+                        User user = userOpt.get();
+                        org.springframework.security.core.userdetails.UserDetails userDetails =
+                                org.springframework.security.core.userdetails.User
+                                        .withUsername(user.getEmail())
+                                        .password("")
+                                        .authorities("ROLE_USER")
+                                        .build();
 
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                        UsernamePasswordAuthenticationToken authToken =
+                                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                    }
+                }
             }
+
+            filterChain.doFilter(request, response);
         }
-    }
-
-    filterChain.doFilter(request, response);
-}
-
     }
 }

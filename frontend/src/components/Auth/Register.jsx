@@ -14,6 +14,7 @@ const Register = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { register } = useAuth();  //newly added
   const { colors, isDarkMode } = useTheme();
   const navigate = useNavigate();
 
@@ -29,19 +30,25 @@ const Register = () => {
     setLoading(true);
     setError('');
 
-    if (formData.password !== formData.confirmPassword) {
+    if (formData.password !== formData.confirmPassword) 
+    {
       setError('Passwords do not match');
       setLoading(false);
       return;
     }
 
-    try {
-      // For demo purposes, just log in with the provided credentials
-      await login(formData.email, formData.password);
-      navigate('/dashboard');
-    } catch (err) {
+    try 
+    {
+      await register(formData.username, formData.email, formData.password);
+      navigate('/login'); // or auto-login and send to dashboard
+      // await login(formData.email, formData.password);   // depends on what you want to do; straight to dashboard or to login page (marzi) default preferred
+      // navigate('/dashboard');
+    } 
+    catch (err) {
       setError(err.message);
-    } finally {
+    }
+    finally 
+    {
       setLoading(false);
     }
   };
@@ -50,12 +57,17 @@ const Register = () => {
     setError('');
     setLoading(true);
 
-    try {
+    try 
+    {
       await login('alice@example.com', 'StrongPass123!');
       navigate('/dashboard');
-    } catch (err) {
+    } 
+    catch (err) 
+    {
       setError(err.message);
-    } finally {
+    } 
+    finally 
+    {
       setLoading(false);
     }
   };
