@@ -4,6 +4,7 @@ import com.chatapp.model.User;
 import com.chatapp.service.AuthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.chatapp.websocket.ChatWebSocketHandler;
 
 import java.util.Map;
 
@@ -12,10 +13,13 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final ChatWebSocketHandler chatWebSocketHandler;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ChatWebSocketHandler chatWebSocketHandler) {
         this.authService = authService;
+        this.chatWebSocketHandler = chatWebSocketHandler;
     }
+
 
     // ======================
     // REGISTER
@@ -54,12 +58,18 @@ public class AuthController {
     // ======================
     // LOGOUT
     // ======================
-    @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader("Authorization") String authHeader) {
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            authService.logout(token);
+  @PostMapping("/logout")
+public ResponseEntity<?> logout(@RequestHeader("Authorization") String authHeader) throws Exception {
+    if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        String token = authHeader.substring(7);
+        Long userId = authService.logout(token);
+
+        if (userId != null) {
+            chatWebSocketHandler.disconnectUser(userId);
         }
-        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
+    return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+}
+
+
 }

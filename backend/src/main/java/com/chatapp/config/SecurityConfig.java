@@ -48,7 +48,14 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource())) // newline for CORS configuration
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                .requestMatchers(
+                    "/api/auth/register",
+                    "/api/auth/login",
+                    "/ws/**",
+                    "/network/qr",
+                    "/network/ip",
+                    "/api/mdns"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(new JwtAuthFilter(jwtService, userRepository, sessionRepository),
@@ -109,8 +116,8 @@ public class SecurityConfig {
                         org.springframework.security.core.userdetails.UserDetails userDetails =
                                 org.springframework.security.core.userdetails.User
                                         .withUsername(user.getEmail())
-                                        .password("")
-                                        .authorities("ROLE_USER")
+                                        .password("") // no need for real password, JWT already validated
+                                        .authorities("ROLE_USER") // or map roles from DB later
                                         .build();
 
                         UsernamePasswordAuthenticationToken authToken =
