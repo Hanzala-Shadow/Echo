@@ -1,0 +1,101 @@
+import React from 'react';
+
+const ChatHeader = ({ group, isConnected, isDarkMode, colors }) => {
+  if (!group) {
+    return (
+      <div 
+        className="h-16 border-b-2 theme-border flex items-center justify-center"
+        style={{ backgroundColor: colors.surface }}
+      >
+        <p className="theme-text-secondary">Select a group to start chatting</p>
+      </div>
+    );
+  }
+
+  const getInitials = (name) => {
+    return name
+      .split(" ")
+      .map(word => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  return (
+    <div 
+      className="h-16 border-b-2 theme-border flex items-center justify-between px-4"
+      style={{ backgroundColor: colors.surface }}
+    >
+      <div className="flex items-center gap-3">
+        <div 
+          className="h-10 w-10 rounded-full flex items-center justify-center font-medium"
+          style={{ 
+            backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
+            color: colors.text
+          }}
+        >
+          {getInitials(group.name)}
+        </div>
+        
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold theme-text">{group.name}</h3>
+            {group.isOnline && (
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm theme-text-secondary">
+            <span>👥</span>
+            <span>{group.memberCount} members</span>
+            {group.description && (
+              <>
+                <span>•</span>
+                <span className="truncate max-w-40">{group.description}</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-1 text-sm ${
+          isConnected ? 'text-green-500' : 'text-red-500'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${
+            isConnected ? 'bg-green-500' : 'bg-red-500'
+          }`}></div>
+          <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+        </div>
+
+        <button
+          onClick={() => console.log("Voice call clicked")}
+          className="p-2 rounded-lg hover-scale theme-text"
+          style={{ backgroundColor: colors.background }}
+          title="Voice call"
+        >
+          📞
+        </button>
+        
+        <button
+          onClick={() => console.log("Video call clicked")}
+          className="p-2 rounded-lg hover-scale theme-text"
+          style={{ backgroundColor: colors.background }}
+          title="Video call"
+        >
+          📹
+        </button>
+
+        <button
+          onClick={() => console.log("Group settings clicked")}
+          className="p-2 rounded-lg hover-scale theme-text"
+          style={{ backgroundColor: colors.background }}
+          title="Group settings"
+        >
+          ⚙️
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default ChatHeader;

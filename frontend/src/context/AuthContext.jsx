@@ -22,6 +22,9 @@ export const AuthProvider = ({ children }) => {
   });
   const [loading, setLoading] = useState(false);
 
+  // Add token getter
+  const token = user?.token || null;
+
   // LOGIN
   const login = async (email, password) => {
     setLoading(true);
@@ -94,6 +97,6 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("user");
   };
 
-  const value = { user, loading, login, register, logout };
+  const value = { user, loading, login, register, logout, token };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
