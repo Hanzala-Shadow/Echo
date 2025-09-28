@@ -125,8 +125,8 @@ public class SecurityConfig {
                         org.springframework.security.core.userdetails.UserDetails userDetails =
                                 org.springframework.security.core.userdetails.User
                                         .withUsername(user.getEmail())
-                                        .password("")
-                                        .authorities("ROLE_USER")
+                                        .password("") // no need for real password, JWT already validated
+                                        .authorities("ROLE_USER") // or map roles from DB later
                                         .build();
 
                         UsernamePasswordAuthenticationToken authToken =
