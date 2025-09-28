@@ -1,9 +1,6 @@
+// frontend/src/context/AuthContext.jsx
 import React, { createContext, useContext, useState } from 'react';
-
-// Determine the base URL based on environment
-const API_BASE_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:8080/api' 
-  : 'http://backend:8080/api';
+import ApiClient from '../utils/apis';  
 
 const AuthContext = createContext();
 
@@ -25,76 +22,63 @@ export const AuthProvider = ({ children }) => {
   // Add token getter
   const token = user?.token || null;
 
-  // LOGIN
+  // LOGIN - Updated to use ApiClient
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      if (!response.ok) {
-        throw new Error("Invalid credentials");
-      }
-
-      const data = await response.json();
-      const token = data.token;
-
-      const loggedInUser = { email, token };
+      const data = await ApiClient.auth.login(email, password);
+      
+      const loggedInUser = { 
+        email, 
+        token: data.token,
+        username: data.username || email.split('@')[0] // Fallback username
+      };
+      
       setUser(loggedInUser);
       localStorage.setItem("user", JSON.stringify(loggedInUser));
-
       return loggedInUser;
+      
+    } catch (error) {
+      throw new Error(error.message || "Login failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // REGISTER
+  // REGISTER - Updated to use ApiClient
   const register = async (username, email, password) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password })
-      });
-
-      if (!response.ok) {
-        throw new Error("Registration failed");
-      }
-
-      const data = await response.json();
-
-      // Auto-login after registration (optional)
-      const loggedInUser = { 
-        id: data.userId, 
-        username: data.username, 
-        email: data.email, 
-        token: null // will need login to get JWT
+      const data = await ApiClient.auth.register(username, email, password);
+      
+      // Return success but don't auto-login
+      return { 
+        success: true,
+        message: "Registration successful. Please login.",
+        userId: data.userId,
+        username: data.username,
+        email: data.email
       };
-
-      setUser(loggedInUser);
-      localStorage.setItem("user", JSON.stringify(loggedInUser));
-
-      return loggedInUser;
+      
+    } catch (error) {
+      throw new Error(error.message || "Registration failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // LOGOUT
+  // LOGOUT - Updated to use ApiClient
   const logout = async () => {
-    if (user?.token) {
-      await fetch(`${API_BASE_URL}/auth/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${user.token}` }
-      });
+    try {
+      if (user?.token) {
+        await ApiClient.auth.logout();
+      }
+    } catch (error) {
+      console.error("Logout API error:", error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem("user");
     }
-    setUser(null);
-    localStorage.removeItem("user");
   };
 
   const value = { user, loading, login, register, logout, token };
