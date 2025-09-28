@@ -10,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,8 +19,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Optional;
 
 @Configuration
@@ -29,6 +34,10 @@ public class SecurityConfig {
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
+
+    // Inject HOST_IP from docker-compose.yml
+    @Value("${HOST_IP:localhost}")
+    private String hostIp;
 
     public SecurityConfig(JwtService jwtService,
                           UserRepository userRepository,
@@ -41,7 +50,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // disable CSRF for APIs
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // newline for CORS configuration
+            .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/auth/register",
@@ -58,6 +68,27 @@ public class SecurityConfig {
 
         return http.build();
     }
+
+    // CORS CONFIGURATION METHOD
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        configuration.setAllowedOriginPatterns(Arrays.asList(
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://" + hostIp + ":5173"   // pulled from docker-compose HOST_IP
+        ));
+
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
 
     // ========================
     // JWT Authentication Filter
@@ -94,8 +125,8 @@ public class SecurityConfig {
                         org.springframework.security.core.userdetails.UserDetails userDetails =
                                 org.springframework.security.core.userdetails.User
                                         .withUsername(user.getEmail())
-                                        .password("") // no need for real password, JWT already validated
-                                        .authorities("ROLE_USER") // or map roles from DB later
+                                        .password("")
+                                        .authorities("ROLE_USER")
                                         .build();
 
                         UsernamePasswordAuthenticationToken authToken =
