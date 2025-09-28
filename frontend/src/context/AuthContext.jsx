@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-import React, { createContext, useContext, useState, useEffect } from 'react';
-=======
 // frontend/src/context/AuthContext.jsx
 import React, { createContext, useContext, useState } from 'react';
 import ApiClient from '../utils/apis';  
->>>>>>> origin/Phase-2-Frontend-Integrated
 
 const AuthContext = createContext();
 
