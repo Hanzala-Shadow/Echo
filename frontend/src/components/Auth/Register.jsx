@@ -25,33 +25,35 @@ const Register = () => {
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  // In Register.jsx, update the handleSubmit function:
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    if (formData.password !== formData.confirmPassword) 
-    {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
+  if (formData.password !== formData.confirmPassword) {
+    setError('Passwords do not match');
+    setLoading(false);
+    return;
+  }
 
-    try 
-    {
-      await register(formData.username, formData.email, formData.password);
-      navigate('/login'); // or auto-login and send to dashboard
-      // await login(formData.email, formData.password);   // depends on what you want to do; straight to dashboard or to login page (marzi) default preferred
-      // navigate('/dashboard');
-    } 
-    catch (err) {
-      setError(err.message);
+  try {
+    const result = await register(formData.username, formData.email, formData.password); // or auto-login and send to dashboard
+    // await login(formData.email, formData.password);   // depends on what you want to do; straight to dashboard or to login page (marzi) default preferred
+    // navigate('/dashboard');
+    
+    if (result.success) {
+      // Show success message and redirect to login
+      setError(`✅ ${result.message}`);
+      setTimeout(() => navigate('/login'), 2000);
     }
-    finally 
-    {
-      setLoading(false);
-    }
-  };
+    
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleDemoLogin = async () => {
     setError('');

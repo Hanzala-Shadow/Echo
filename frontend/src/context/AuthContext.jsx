@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 import React, { createContext, useContext, useState, useEffect } from 'react';
+=======
+// frontend/src/context/AuthContext.jsx
+import React, { createContext, useContext, useState } from 'react';
+import ApiClient from '../utils/apis';  
+>>>>>>> origin/Phase-2-Frontend-Integrated
 
 const AuthContext = createContext();
 
@@ -25,80 +31,70 @@ export const AuthProvider = ({ children }) => {
     setApiBaseUrl(backendUrl);
   }, []);
 
-  // LOGIN
+  // Add token getter
+  const token = user?.token || null;
+
+  // LOGIN - Updated to use ApiClient
   const login = async (email, password) => {
     if (!apiBaseUrl) throw new Error("API not ready yet");
     setLoading(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      if (!response.ok) throw new Error("Invalid credentials");
-
-      const data = await response.json();
-      const token = data.token;
-
-      const loggedInUser = { email, token };
+      const data = await ApiClient.auth.login(email, password);
+      
+      const loggedInUser = { 
+        email, 
+        token: data.token,
+        username: data.username || email.split('@')[0] // Fallback username
+      };
+      
       setUser(loggedInUser);
       localStorage.setItem("user", JSON.stringify(loggedInUser));
-
       return loggedInUser;
+      
+    } catch (error) {
+      throw new Error(error.message || "Login failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // REGISTER
+  // REGISTER - Updated to use ApiClient
   const register = async (username, email, password) => {
     if (!apiBaseUrl) throw new Error("API not ready yet");
     setLoading(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password })
-      });
-
-      if (!response.ok) throw new Error("Registration failed");
-
-      const data = await response.json();
-
-      const loggedInUser = {
-        id: data.userId,
+      const data = await ApiClient.auth.register(username, email, password);
+      
+      // Return success but don't auto-login
+      return { 
+        success: true,
+        message: "Registration successful. Please login.",
+        userId: data.userId,
         username: data.username,
-        email: data.email,
-        token: null
+        email: data.email
       };
-
-      setUser(loggedInUser);
-      localStorage.setItem("user", JSON.stringify(loggedInUser));
-
-      return loggedInUser;
+      
+    } catch (error) {
+      throw new Error(error.message || "Registration failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // LOGOUT
+  // LOGOUT - Updated to use ApiClient
   const logout = async () => {
-    if (!apiBaseUrl) throw new Error("API not ready yet");
-    if (user?.token) {
-      await fetch(`${apiBaseUrl}/auth/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${user.token}` }
-      });
+    try {
+      if (user?.token) {
+        await ApiClient.auth.logout();
+      }
+    } catch (error) {
+      console.error("Logout API error:", error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem("user");
     }
-    setUser(null);
-    localStorage.removeItem("user");
   };
 
-  const value = { user, loading, login, register, logout, apiBaseUrl };
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = { user, loading, login, register, logout, token };
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

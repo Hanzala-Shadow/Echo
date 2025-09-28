@@ -1,14 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import ThemeToggle from './ThemeToggle';
+import ChatContainer from './Chat/ChatContainer';
+import chatService from '../services/chatService';
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Initialize chat service with token
+  useEffect(() => {
+    if (token) {
+      chatService.setToken(token);
+    }
+  }, [token]);
 
   const handleLogout = () => {
     if (confirm('Are you sure you want to logout?')) {
@@ -94,10 +103,10 @@ const Dashboard = () => {
       </div>
 
       {/* Content Area */}
-      <div className="relative z-10 p-6">
-        <div className="max-w-6xl mx-auto">
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
+      <div className="relative z-10">
+        {activeTab === 'overview' && (
+          <div className="p-6">
+            <div className="max-w-6xl mx-auto space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="theme-surface p-6 rounded-xl border-2 theme-border hover-scale">
                   <h3 className="text-lg font-semibold theme-text mb-2">Recent Chats</h3>
@@ -113,17 +122,18 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {activeTab === 'chat' && (
-            <div className="theme-surface p-8 rounded-xl border-2 theme-border">
-              <h2 className="text-xl font-semibold theme-text mb-4">Chat Interface</h2>
-              <p className="theme-text-secondary">Chat functionality coming soon...</p>
-            </div>
-          )}
+        {activeTab === 'chat' && (
+          <div className="h-[calc(100vh-200px)]">
+            <ChatContainer />
+          </div>
+        )}
 
-          {activeTab === 'ai-tools' && (
-            <div className="space-y-6">
+        {activeTab === 'ai-tools' && (
+          <div className="p-6">
+            <div className="max-w-6xl mx-auto space-y-6">
               <h2 className="text-xl font-semibold theme-text">AI Tools</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="theme-surface p-6 rounded-xl border-2 theme-border hover-scale">
@@ -144,33 +154,31 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {activeTab === 'settings' && (
-            <div className="theme-surface p-8 rounded-xl border-2 theme-border">
-              <h2 className="text-xl font-semibold theme-text mb-4">Settings</h2>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="theme-text">Dark Mode</span>
-                  <ThemeToggle />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="theme-text">Notifications</span>
-                  <input type="checkbox" className="rounded" />
+        {activeTab === 'settings' && (
+          <div className="p-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="theme-surface p-8 rounded-xl border-2 theme-border">
+                <h2 className="text-xl font-semibold theme-text mb-4">Settings</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="theme-text">Dark Mode</span>
+                    <ThemeToggle />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="theme-text">Notifications</span>
+                    <input type="checkbox" className="rounded" />
+                  </div>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 export default Dashboard;
-
-
-
-
-
-
