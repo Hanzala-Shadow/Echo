@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import useWebSocket from '../../hooks/useWebSocket';
+import ApiClient from '../../utils/apis'; 
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import GroupSidebar from './GroupSidebar';
 import UserSidebar from './UserSidebar';
 import ChatHeader from './ChatHeader';
+import GroupCreateModal from './Groups/GroupCreateModal';
 
 const ChatContainer = () => {
   const { user, token } = useAuth();
@@ -17,76 +19,93 @@ const ChatContainer = () => {
   const [groups, setGroups] = useState([]);
   const [messages, setMessages] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const { 
     isConnected, 
+    messages: realTimeMessages, // Use real WebSocket messages
+    onlineUsers: realTimeOnlineUsers, // Use real online users from WebSocket
     sendMessage, 
     joinGroup, 
     leaveGroup 
   } = useWebSocket(user?.id, token);
 
-  // Sample data - replace with real API calls
+  //Fetch user's groups from API
   useEffect(() => {
-    // TODO: Fetch user's groups from API
-    setGroups([
-      {
-        id: '1',
-        name: 'General',
-        description: 'Main discussion channel',
-        memberCount: 12,
-        isOnline: true
-      },
-      {
-        id: '2', 
-        name: 'Development Team',
-        description: 'Dev team discussions',
-        memberCount: 5,
-        isOnline: true
+    const fetchUserGroups = async () => {
+      if (!token) return;
+      
+      setLoading(true);
+      try {
+        const userGroups = await ApiClient.chat.getGroups();
+        
+        // Transform backend data to match frontend format
+        const transformedGroups = userGroups.map(group => ({
+          id: group.groupId,
+          name: group.groupName || `Group ${group.groupId}`,
+          description: group.description || 'No description',
+          memberCount: group.memberCount || 1,
+          isOnline: true, // might want to calculate this based on online members
+          createdBy: group.createdBy,
+          isDirect: group.isDirect || false
+        }));
+        
+        setGroups(transformedGroups);
+      } catch (error) {
+        console.error('Error fetching groups:', error);
+        // You could show an error message to the user ?
+      } finally {
+        setLoading(false);
       }
-    ]);
+    };
 
-    setOnlineUsers([
-      {
-        id: '1',
-        name: 'Alice Johnson',
-        username: 'alice.j',
-        status: 'online',
-        role: 'admin'
-      },
-      {
-        id: '2',
-        name: 'Bob Smith', 
-        username: 'bob.smith',
-        status: 'online',
-        role: 'moderator'
-      }
-    ]);
-  }, []);
+    fetchUserGroups();
+  }, [token]); // Re-fetch when token changes
 
-  const handleGroupSelect = (group) => {
+  useEffect(() => {
+    setMessages(realTimeMessages);
+  }, [realTimeMessages]);
+
+  useEffect(() => {
+    setOnlineUsers(realTimeOnlineUsers);
+  }, [realTimeOnlineUsers]);
+
+  const handleGroupSelect = async (group) => {
+    if (!group || !group.id) return;
+    
+    // Leave current group if any
+    if (activeGroup) {
+      leaveGroup(activeGroup.id);
+    }
+    
     setActiveGroup(group);
+    
     joinGroup(group.id);
-    // TODO: Fetch group messages
-    setMessages([
-      {
-        id: '1',
-        content: 'Welcome to the team! 🎉',
-        timestamp: new Date(Date.now() - 3600000),
-        senderId: '1',
-        senderName: 'Alice Johnson',
+    
+    // Fetch message history for the selected group
+    setLoading(true);
+    try {
+      const messageHistory = await ApiClient.chat.getGroupMessages(group.id);
+      
+      // Transform backend messages to frontend format
+      const transformedMessages = messageHistory.messages.map(msg => ({
+        id: msg.messageId,
+        content: msg.content,
+        senderId: msg.senderId,
+        senderName: `User ${msg.senderId}`, // might want to fetch actual usernames
+        timestamp: new Date(msg.createdAt),
         type: 'text',
-        isCurrentUser: false
-      },
-      {
-        id: '2',
-        content: 'Thanks for the warm welcome!',
-        timestamp: new Date(Date.now() - 1800000),
-        senderId: user?.id,
-        senderName: user?.username,
-        type: 'text',
-        isCurrentUser: true
-      }
-    ]);
+        groupId: msg.groupId,
+        isCurrentUser: msg.senderId === user?.id
+      }));
+      
+      setMessages(transformedMessages);
+    } catch (error) {
+      console.error('Error fetching group messages:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSendMessage = (content) => {
@@ -102,8 +121,14 @@ const ChatContainer = () => {
   };
 
   const handleCreateGroup = () => {
-    console.log('Create group clicked');
-    // TODO: Open create group modal
+    setIsCreateModalOpen(true);
+  };
+
+  const handleGroupCreated = (newGroup) => {
+    // Add the new group to the list
+    setGroups(prev => [...prev, newGroup]);
+    // Optionally select the new group automatically
+    handleGroupSelect(newGroup);
   };
 
   return (
@@ -118,6 +143,7 @@ const ChatContainer = () => {
             onCreateGroup={handleCreateGroup}
             isDarkMode={isDarkMode}
             colors={colors}
+            loading={loading}
           />
         )}
       </div>
@@ -154,11 +180,12 @@ const ChatContainer = () => {
           currentUserId={user?.id}
           isDarkMode={isDarkMode}
           colors={colors}
+          loading={loading}
         />
         
         <MessageInput
           onSendMessage={handleSendMessage}
-          disabled={!activeGroup || !isConnected}
+          disabled={!activeGroup || !isConnected || loading}
           placeholder={activeGroup ? "Type a message..." : "Select a group to start chatting"}
           isDarkMode={isDarkMode}
           colors={colors}
@@ -176,6 +203,13 @@ const ChatContainer = () => {
           />
         )}
       </div>
+
+      <GroupCreateModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onGroupCreated={handleGroupCreated}
+        currentUserId={user?.id}
+      />
     </div>
   );
 };

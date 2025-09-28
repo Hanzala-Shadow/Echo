@@ -6,7 +6,8 @@ const GroupSidebar = ({
   onGroupSelect, 
   onCreateGroup, 
   isDarkMode, 
-  colors 
+  colors,
+  loading = false 
 }) => {
   const getInitials = (name) => {
     return name
@@ -36,9 +37,15 @@ const GroupSidebar = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-2 space-y-1">
-          {groups.length === 0 ? (
+       <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="theme-text-secondary mt-2">Loading groups...</p>
+              </div>
+            </div>
+          ) : groups.length === 0 ? (
             <div className="text-center py-8">
               <p className="theme-text-secondary">No groups yet</p>
               <p className="text-sm theme-text-secondary">Create your first group!</p>
@@ -100,7 +107,6 @@ const GroupSidebar = ({
           )}
         </div>
       </div>
-    </div>
   );
 };
 

@@ -1,20 +1,41 @@
-// frontend/src/utils/api.js - Centralized API client for Echo Chat
-
 const API_BASE_URL = 'http://localhost:8080/api';
 
 class ApiClient {
   static async request(endpoint, options = {}) {
     try {
       // Get token from localStorage
-      const userData = localStorage.getItem('user');
-      const token = userData ? JSON.parse(userData).token : null;
+      let token = null;
+      let userData = null;
+      try {
+        userData = localStorage.getItem('user');
+        if (userData) {
+          const user = JSON.parse(userData);
+          token = user?.token || null;
+          console.log('🔐 Token found:', token ? 'Yes' : 'No');
+          console.log('👤 User data:', user);
+        } else {
+          console.log('🔐 No user data found in localStorage');
+        }
+      } catch (e) {
+        console.warn('❌ Error parsing user data from localStorage:', e);
+      }
 
       // Prepare headers
       const headers = {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       };
+
+      // Add Authorization header if token exists
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('📤 Sending Authorization header with token');
+      } else {
+        console.log('❌ No token available, skipping Authorization header');
+      }
+
+      console.log(`🌐 API Call: ${options.method || 'GET'} ${API_BASE_URL}${endpoint}`);
+      console.log('📋 Request headers:', headers);
 
       // Prepare config
       const config = {
@@ -23,40 +44,69 @@ class ApiClient {
         ...options,
       };
 
-      // Stringify body if it's an object
-      if (config.body && typeof config.body === 'object') {
+      // Stringify body if it's an object and method is not GET/HEAD
+      if (config.body && typeof config.body === 'object' && 
+          config.method !== 'GET' && config.method !== 'HEAD') {
         config.body = JSON.stringify(config.body);
+        console.log('📦 Request body:', config.body);
       }
 
-      console.log(`API Call: ${config.method} ${API_BASE_URL}${endpoint}`);
-
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-      
+
+      console.log('📥 Response status:', response.status, response.statusText);
+      console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()));
+
       // Handle non-OK responses
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        let errorData = null;
         
         try {
-          const errorData = await response.json();
+          errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
+          console.log('❌ Error response data:', errorData);
         } catch (e) {
+          console.log('❌ Error response is not JSON');
           // If response isn't JSON, use status text
+          if (response.status === 401) {
+            errorMessage = 'Unauthorized - Please login again';
+          } else if (response.status === 404) {
+            errorMessage = 'Endpoint not found';
+          } else if (response.status === 403) {
+            errorMessage = 'Access forbidden';
+          }
         }
         
         throw new Error(errorMessage);
       }
 
-      // Handle empty responses
+      // Handle empty responses for 204 No Content
+      if (response.status === 204) {
+        console.log('✅ 204 No Content response');
+        return null;
+      }
+
+      // Handle JSON responses
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        const data = await response.json();
+        console.log('✅ Success response data:', data);
+        return data;
       }
       
       // For non-JSON responses (like QR code image)
-      return await response.blob();
+      const blob = await response.blob();
+      console.log('✅ Success response (blob):', blob);
+      return blob;
       
     } catch (error) {
-      console.error(`API Error (${endpoint}):`, error);
+      console.error(`💥 API Error (${endpoint}):`, error);
+      
+      // Handle network errors specifically
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        throw new Error('Network error - Unable to connect to server');
+      }
+      
       throw error;
     }
   }
@@ -82,7 +132,7 @@ class ApiClient {
   };
 
   // ======================
-  // CHAT ENDPOINTS (Matches your ChatController.java)
+  // CHAT ENDPOINTS
   // ======================
   static chat = {
     // Get all groups for the current user
@@ -109,29 +159,31 @@ class ApiClient {
   };
 
   // ======================
-  // NETWORK ENDPOINTS (Matches your NetworkController.java)
-  // ======================
-  static network = {
-    // Get server LAN IP address
-    getServerIP: () => 
-      ApiClient.request('/network/ip'),
-
-    // Get QR code image for server URL
-    getQRCode: () => 
-      ApiClient.request('/network/qr')
-  };
-
-  // ======================
-  // USER ENDPOINTS (For future expansion)
+  // USER ENDPOINTS
   // ======================
   static users = {
-    // Search users by username/email
+    // Search users by username
     search: (query) => 
-      ApiClient.request(`/users/search?q=${encodeURIComponent(query)}`),
+      ApiClient.request(`/users/search?query=${encodeURIComponent(query)}`),
 
     // Get user profile
     getProfile: (userId) => 
-      ApiClient.request(`/users/${userId}`)
+      ApiClient.request(`/users/${userId}`),
+
+    // Get all usernames
+    getAllUsernames: () =>
+      ApiClient.request('/users/usernames')
+  };
+
+  // ======================
+  // NETWORK ENDPOINTS
+  // ======================
+  static network = {
+    getServerIP: () => 
+      ApiClient.request('/network/ip'),
+
+    getQRCode: () => 
+      ApiClient.request('/network/qr')
   };
 
   // ======================

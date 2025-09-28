@@ -54,7 +54,9 @@ public class SecurityConfig {
                     "/ws/**",
                     "/network/qr",
                     "/network/ip",
-                    "/api/mdns"
+                    "/api/mdns",
+                    "/api/users/usernames",     // Added this line
+                    "/api/users/search"       // Added this line
                 ).permitAll()
                 .anyRequest().authenticated()
             )
