@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import SockJS from 'sockjs-client';
-import { Client } from 'stompjs';
 
 const useWebSocket = (userId, token) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -8,21 +6,19 @@ const useWebSocket = (userId, token) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [activeGroup, setActiveGroup] = useState(null);
   
-  const stompClientRef = useRef(null);
+  const websocketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttempts = useRef(0);
 
   const maxReconnectAttempts = 5;
   const reconnectInterval = 3000;
 
-  // Spring WebSocket message types matching your backend
+  // WebSocket message types matching your backend
   const MESSAGE_TYPES = {
     MESSAGE: 'message',
-    USER_JOINED: 'user_joined',
-    USER_LEFT: 'user_left',
     STATUS_UPDATE: 'status_update',
-    TYPING_START: 'typing_start',
-    TYPING_STOP: 'typing_stop'
+    USER_JOINED: 'user_joined',
+    USER_LEFT: 'user_left'
   };
 
   const connect = useCallback(() => {
@@ -32,76 +28,67 @@ const useWebSocket = (userId, token) => {
     }
 
     try {
-      // Use SockJS for Spring WebSocket compatibility
-      const socketUrl = 'http://localhost:8080/ws/messages';
-      console.log('Connecting to WebSocket:', socketUrl);
+      // ✅ FIXED: Include token in URL as backend expects
+      const socketUrl = `http://localhost:8080/ws/messages?token=${token}`;
+      console.log('🔌 Connecting to WebSocket:', socketUrl);
 
-      // Create STOMP client over SockJS
-      stompClientRef.current = new Client({
-        webSocketFactory: () => new SockJS(socketUrl),
-        connectHeaders: {
-          'Authorization': `Bearer ${token}`
-        },
-        reconnectDelay: 5000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000,
+      // Create WebSocket directly 
+      const socket = new WebSocket(socketUrl);
+      
+      socket.onopen = () => {
+        console.log('✅ WebSocket connected successfully');
+        setIsConnected(true);
+        reconnectAttempts.current = 0;
         
-        onConnect: (frame) => {
-          console.log('WebSocket connected successfully', frame);
-          setIsConnected(true);
-          reconnectAttempts.current = 0;
+        // Broadcast that user is online
+        sendStatusUpdate(true);
+      };
 
-          // Subscribe to user-specific topic for private messages
-          stompClientRef.current.subscribe(`/user/${userId}/queue/messages`, (message) => {
-            handleIncomingMessage(JSON.parse(message.body));
-          });
-
-          // Subscribe to group topics if we have an active group
-          if (activeGroup) {
-            joinGroup(activeGroup);
-          }
-
-          // Broadcast that user is online
-          sendStatusUpdate(true);
-        },
-
-        onStompError: (frame) => {
-          console.error('STOMP error:', frame);
-          setIsConnected(false);
-        },
-
-        onWebSocketClose: (event) => {
-          console.log('WebSocket disconnected:', event);
-          setIsConnected(false);
-          handleReconnection();
-        },
-
-        onDisconnect: () => {
-          console.log('STOMP client disconnected');
-          setIsConnected(false);
+      socket.onmessage = (event) => {
+        try {
+          console.log('📨 WebSocket message received:', event.data);
+          const data = JSON.parse(event.data);
+          handleIncomingMessage(data);
+        } catch (error) {
+          console.error('❌ Error parsing WebSocket message:', error);
         }
-      });
+      };
 
-      // Activate the connection
-      stompClientRef.current.activate();
+      socket.onclose = (event) => {
+        console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+        setIsConnected(false);
+        
+        // Only attempt reconnect if not a normal closure
+        if (event.code !== 1000) {
+          handleReconnection();
+        }
+      };
+
+      socket.onerror = (error) => {
+        console.error('❌ WebSocket error:', error);
+        setIsConnected(false);
+      };
+
+      // Store socket reference
+      websocketRef.current = socket;
 
     } catch (error) {
-      console.error('Error creating WebSocket connection:', error);
+      console.error('❌ Error creating WebSocket connection:', error);
       setIsConnected(false);
       handleReconnection();
     }
-  }, [userId, token, activeGroup]);
+  }, [userId, token]);
 
   const handleReconnection = useCallback(() => {
     if (reconnectAttempts.current < maxReconnectAttempts) {
       reconnectAttempts.current++;
-      console.log(`Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
+      console.log(`🔄 Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
       
       reconnectTimeoutRef.current = setTimeout(() => {
         connect();
       }, reconnectInterval);
     } else {
-      console.log('Max reconnection attempts reached');
+      console.log('❌ Max reconnection attempts reached');
     }
   }, [connect]);
 
@@ -110,23 +97,27 @@ const useWebSocket = (userId, token) => {
       clearTimeout(reconnectTimeoutRef.current);
     }
     
-    if (stompClientRef.current) {
-      sendStatusUpdate(false); // Notify others we're leaving
-      stompClientRef.current.deactivate();
-      stompClientRef.current = null;
+    if (websocketRef.current) {
+      // Send offline status before closing
+      sendStatusUpdate(false);
+      
+      // Close with normal status code
+      websocketRef.current.close(1000, "User initiated disconnect");
+      websocketRef.current = null;
     }
     
     setIsConnected(false);
     setMessages([]);
     setOnlineUsers([]);
+    setActiveGroup(null);
   }, []);
 
   const handleIncomingMessage = useCallback((data) => {
-    console.log('WebSocket message received:', data);
+    console.log('📩 Handling incoming message:', data);
     
     // Handle different message types based on your backend
     switch (data.type) {
-      case MESSAGE_TYPES.MESSAGE:
+      case 'message': // Match your backend's message type
         setMessages(prev => [...prev, {
           id: data.message_id || Date.now().toString(),
           content: data.content,
@@ -141,7 +132,7 @@ const useWebSocket = (userId, token) => {
         
       case MESSAGE_TYPES.STATUS_UPDATE:
         setOnlineUsers(prev => {
-          const userIndex = prev.findIndex(u => u.id === data.user_id);
+          const userIndex = prev.findIndex(u => u.userId === data.user_id);
           if (userIndex > -1) {
             // Update existing user
             const updated = [...prev];
@@ -151,7 +142,7 @@ const useWebSocket = (userId, token) => {
             // Add new online user
             return [...prev, { 
               id: data.user_id, 
-              name: `User ${data.user_id}`,
+              name: data.user_name || `User ${data.user_id}`,
               online: true 
             }];
           }
@@ -160,60 +151,61 @@ const useWebSocket = (userId, token) => {
         break;
         
       case MESSAGE_TYPES.USER_JOINED:
-        setOnlineUsers(prev => [...prev.filter(u => u.id !== data.user_id), {
-          id: data.user_id,
-          name: data.user_name || `User ${data.user_id}`,
-          online: true
-        }]);
+        setOnlineUsers(prev => [
+          ...prev.filter(u => u.userId !== data.user_id),
+          {
+            id: data.user_id,
+            name: data.user_name || `User ${data.user_id}`,
+            online: true
+          }
+        ]);
         break;
         
       case MESSAGE_TYPES.USER_LEFT:
         setOnlineUsers(prev => prev.map(user => 
-          user.id === data.user_id ? { ...user, online: false } : user
-        ));
-        break;
-        
-      case MESSAGE_TYPES.TYPING_START:
-      case MESSAGE_TYPES.TYPING_STOP:
-        setOnlineUsers(prev => prev.map(user => 
-          user.id === data.user_id 
-            ? { ...user, isTyping: data.type === MESSAGE_TYPES.TYPING_START }
-            : user
+          user.userId === data.user_id ? { ...user, online: false } : user
         ));
         break;
         
       default:
-        console.log('Unknown message type:', data.type);
+        console.log('❓ Unknown message type:', data.type, data);
     }
   }, []);
 
-  const sendMessage = useCallback((message) => {
-    if (!stompClientRef.current || !stompClientRef.current.connected) {
-      console.error('WebSocket is not connected');
-      return false;
-    }
-
-    if (!message.groupId || !message.content?.trim()) {
-      console.error('Invalid message format');
+  const sendWebSocketMessage = useCallback((messageData) => {
+    if (!websocketRef.current || websocketRef.current.readyState !== WebSocket.OPEN) {
+      console.error('❌ WebSocket is not connected');
       return false;
     }
 
     try {
-      // Format message to match your Spring backend expectation
-      const messageData = {
-        type: MESSAGE_TYPES.MESSAGE,
-        sender_id: userId,
-        group_id: message.groupId,
-        content: message.content.trim(),
-        timestamp: new Date().toISOString()
-      };
+      websocketRef.current.send(JSON.stringify(messageData));
+      console.log('📤 WebSocket message sent:', messageData);
+      return true;
+    } catch (error) {
+      console.error('❌ Error sending WebSocket message:', error);
+      return false;
+    }
+  }, []);
 
-      // Send to your backend's message handling endpoint
-      stompClientRef.current.publish({
-        destination: '/app/chat.sendMessage', // This should match your @MessageMapping
-        body: JSON.stringify(messageData)
-      });
+  const sendMessage = useCallback((message) => {
+    if (!message.groupId || !message.content?.trim()) {
+      console.error('❌ Invalid message format');
+      return false;
+    }
 
+    // Format message to match your Spring backend expectation
+    const messageData = {
+      type: 'message', // ✅ Match backend expected type
+      sender_id: userId,
+      group_id: message.groupId,
+      content: message.content.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    const sent = sendWebSocketMessage(messageData);
+
+    if (sent) {
       // Optimistically add to local messages
       const optimisticMessage = {
         id: `temp-${Date.now()}`,
@@ -227,140 +219,89 @@ const useWebSocket = (userId, token) => {
       };
 
       setMessages(prev => [...prev, optimisticMessage]);
-      console.log('Message sent:', messageData);
-      return true;
-
-    } catch (error) {
-      console.error('Error sending message:', error);
-      return false;
     }
-  }, [userId]);
+
+    return sent;
+  }, [userId, sendWebSocketMessage]);
 
   const joinGroup = useCallback((groupId) => {
-    if (!stompClientRef.current || !stompClientRef.current.connected) {
-      console.error('WebSocket is not connected');
+    if (!groupId) {
+      console.error('❌ Invalid group ID');
       return false;
     }
 
-    try {
-      setActiveGroup(groupId);
-      
-      // Subscribe to group messages
-      stompClientRef.current.subscribe(`/topic/group.${groupId}`, (message) => {
-        handleIncomingMessage(JSON.parse(message.body));
-      });
+    setActiveGroup(groupId);
+    
+    // Notify group of join
+    const joinMessage = {
+      type: MESSAGE_TYPES.USER_JOINED,
+      user_id: userId,
+      group_id: groupId,
+      timestamp: new Date().toISOString()
+    };
 
-      // Notify group of join
-      const joinMessage = {
-        type: MESSAGE_TYPES.USER_JOINED,
-        user_id: userId,
-        group_id: groupId,
-        timestamp: new Date().toISOString()
-      };
-
-      stompClientRef.current.publish({
-        destination: '/app/group.join',
-        body: JSON.stringify(joinMessage)
-      });
-
-      console.log('Joined group:', groupId);
-      return true;
-
-    } catch (error) {
-      console.error('Error joining group:', error);
-      return false;
-    }
-  }, [userId, handleIncomingMessage]);
+    console.log('👥 Joining group:', groupId);
+    return sendWebSocketMessage(joinMessage);
+  }, [userId, sendWebSocketMessage]);
 
   const leaveGroup = useCallback((groupId) => {
-    if (!stompClientRef.current || !stompClientRef.current.connected) {
+    if (!groupId) {
       return false;
     }
 
-    try {
-      // Notify group of leave
-      const leaveMessage = {
-        type: MESSAGE_TYPES.USER_LEFT,
-        user_id: userId,
-        group_id: groupId,
-        timestamp: new Date().toISOString()
-      };
+    // Notify group of leave
+    const leaveMessage = {
+      type: MESSAGE_TYPES.USER_LEFT,
+      user_id: userId,
+      group_id: groupId,
+      timestamp: new Date().toISOString()
+    };
 
-      stompClientRef.current.publish({
-        destination: '/app/group.leave',
-        body: JSON.stringify(leaveMessage)
-      });
-
+    const sent = sendWebSocketMessage(leaveMessage);
+    
+    if (sent) {
       setActiveGroup(null);
-      console.log('Left group:', groupId);
-      return true;
-
-    } catch (error) {
-      console.error('Error leaving group:', error);
-      return false;
+      console.log('🚪 Left group:', groupId);
     }
-  }, [userId]);
+
+    return sent;
+  }, [userId, sendWebSocketMessage]);
 
   const sendTypingIndicator = useCallback((groupId, isTyping) => {
-    if (!stompClientRef.current || !stompClientRef.current.connected) {
-      return false;
-    }
+    const typingMessage = {
+      type: isTyping ? 'typing_start' : 'typing_stop',
+      user_id: userId,
+      group_id: groupId,
+      timestamp: new Date().toISOString()
+    };
 
-    try {
-      const typingMessage = {
-        type: isTyping ? MESSAGE_TYPES.TYPING_START : MESSAGE_TYPES.TYPING_STOP,
-        user_id: userId,
-        group_id: groupId,
-        timestamp: new Date().toISOString()
-      };
-
-      stompClientRef.current.publish({
-        destination: '/app/typing.indicator',
-        body: JSON.stringify(typingMessage)
-      });
-
-      return true;
-
-    } catch (error) {
-      console.error('Error sending typing indicator:', error);
-      return false;
-    }
-  }, [userId]);
+    return sendWebSocketMessage(typingMessage);
+  }, [userId, sendWebSocketMessage]);
 
   const sendStatusUpdate = useCallback((isOnline) => {
-    if (!stompClientRef.current || !stompClientRef.current.connected) {
-      return false;
-    }
+    const statusMessage = {
+      type: MESSAGE_TYPES.STATUS_UPDATE,
+      user_id: userId,
+      online_status: isOnline,
+      timestamp: new Date().toISOString()
+    };
 
-    try {
-      const statusMessage = {
-        type: MESSAGE_TYPES.STATUS_UPDATE,
-        user_id: userId,
-        online_status: isOnline,
-        timestamp: new Date().toISOString()
-      };
-
-      stompClientRef.current.publish({
-        destination: '/app/user.status',
-        body: JSON.stringify(statusMessage)
-      });
-
-      return true;
-
-    } catch (error) {
-      console.error('Error sending status update:', error);
-      return false;
-    }
-  }, [userId]);
+    console.log('📊 Sending status update:', isOnline ? 'online' : 'offline');
+    return sendWebSocketMessage(statusMessage);
+  }, [userId, sendWebSocketMessage]);
 
   // Connect when hook is mounted and dependencies change
   useEffect(() => {
     if (userId && token) {
+      console.log('🚀 Initializing WebSocket connection...');
       connect();
+    } else {
+      console.log('⏸️  Skipping WebSocket connection: missing userId or token');
     }
 
     // Cleanup on unmount
     return () => {
+      console.log('🧹 Cleaning up WebSocket connection...');
       disconnect();
     };
   }, [connect, disconnect, userId, token]);

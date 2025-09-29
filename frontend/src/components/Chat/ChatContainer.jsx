@@ -12,26 +12,65 @@ import GroupCreateModal from './Groups/GroupCreateModal';
 
 const ChatContainer = () => {
   const { user, token } = useAuth();
+
+  console.log('🔍 Auth Context Debug:', {
+    user: user,
+    userId: user?.userId,
+    token: token ? 'present' : 'missing'
+  });
+
+
   const { colors, isDarkMode } = useTheme();
   const [activeGroup, setActiveGroup] = useState(null);
   const [showGroupSidebar, setShowGroupSidebar] = useState(true);
   const [showUserSidebar, setShowUserSidebar] = useState(true);
   const [groups, setGroups] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [localMessages, setLocalMessages] = useState([]); //FIXED: Renamed for clarity
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const { 
     isConnected, 
-    messages: realTimeMessages, // Use real WebSocket messages
-    onlineUsers: realTimeOnlineUsers, // Use real online users from WebSocket
+    messages: realTimeMessages, // WebSocket messages only
+    onlineUsers: realTimeOnlineUsers, 
     sendMessage, 
     joinGroup, 
     leaveGroup 
-  } = useWebSocket(user?.id, token);
+  } = useWebSocket(user?.userId, token);
 
-  //Fetch user's groups from API
+  // FIXED: Combine local (REST) and real-time (WebSocket) messages
+  const allMessages = React.useMemo(() => {
+    console.log('🔄 Combining messages:', {
+      local: localMessages.length,
+      realTime: realTimeMessages.length
+    });
+    
+    // Create a map to avoid duplicates (WebSocket might re-send messages)
+    const messageMap = new Map();
+    
+    // Add all local messages (from REST API)
+    localMessages.forEach(msg => {
+      messageMap.set(msg.id, msg);
+    });
+    
+    // Add/update with real-time messages (from WebSocket)
+    realTimeMessages.forEach(rtMsg => {
+      // If message already exists, update it (for status changes, etc.)
+      // Otherwise add as new message
+      messageMap.set(rtMsg.id, rtMsg);
+    });
+    
+    // Convert back to array and sort by timestamp
+    const combined = Array.from(messageMap.values()).sort((a, b) => 
+      new Date(a.timestamp) - new Date(b.timestamp)
+    );
+    
+    console.log('✅ Combined messages:', combined.length);
+    return combined;
+  }, [localMessages, realTimeMessages]);
+
+  // Fetch user's groups from API
   useEffect(() => {
     const fetchUserGroups = async () => {
       if (!token) return;
@@ -46,7 +85,7 @@ const ChatContainer = () => {
           name: group.groupName || `Group ${group.groupId}`,
           description: group.description || 'No description',
           memberCount: group.memberCount || 1,
-          isOnline: true, // might want to calculate this based on online members
+          isOnline: true,
           createdBy: group.createdBy,
           isDirect: group.isDirect || false
         }));
@@ -54,25 +93,34 @@ const ChatContainer = () => {
         setGroups(transformedGroups);
       } catch (error) {
         console.error('Error fetching groups:', error);
-        // You could show an error message to the user ?
       } finally {
         setLoading(false);
       }
     };
 
     fetchUserGroups();
-  }, [token]); // Re-fetch when token changes
+  }, [token]);
 
+  // FIXED: Transform WebSocket online users to match UI expectations
   useEffect(() => {
-    setMessages(realTimeMessages);
-  }, [realTimeMessages]);
-
-  useEffect(() => {
-    setOnlineUsers(realTimeOnlineUsers);
+    const transformedUsers = realTimeOnlineUsers.map(wsUser => ({
+      id: wsUser.user_id || wsUser.id,
+      name: wsUser.user_name || `User ${wsUser.user_id || wsUser.id}`,
+      username: wsUser.username || `user${wsUser.user_id || wsUser.id}`,
+      status: wsUser.online_status ? 'online' : 'offline',
+      role: 'member', // Default role for now
+      isTyping: wsUser.isTyping || false,
+      email: wsUser.email || ''
+    }));
+    
+    console.log('👥 Transformed online users:', transformedUsers);
+    setOnlineUsers(transformedUsers);
   }, [realTimeOnlineUsers]);
 
   const handleGroupSelect = async (group) => {
     if (!group || !group.id) return;
+    
+    console.log('🎯 Selecting group:', group.id, group.name);
     
     // Leave current group if any
     if (activeGroup) {
@@ -81,28 +129,33 @@ const ChatContainer = () => {
     
     setActiveGroup(group);
     
+    // Join group via WebSocket
     joinGroup(group.id);
     
     // Fetch message history for the selected group
     setLoading(true);
     try {
       const messageHistory = await ApiClient.chat.getGroupMessages(group.id);
+      console.log('📨 Message history:', messageHistory);
       
       // Transform backend messages to frontend format
       const transformedMessages = messageHistory.messages.map(msg => ({
-        id: msg.messageId,
+        id: msg.messageId || `msg-${Date.now()}-${Math.random()}`,
         content: msg.content,
         senderId: msg.senderId,
-        senderName: `User ${msg.senderId}`, // might want to fetch actual usernames
-        timestamp: new Date(msg.createdAt),
+        senderName: msg.senderName || `User ${msg.senderId}`,
+        timestamp: new Date(msg.createdAt || msg.timestamp || Date.now()),
         type: 'text',
         groupId: msg.groupId,
-        isCurrentUser: msg.senderId === user?.id
+        isCurrentUser: msg.senderId === user?.userId,
+        status: 'delivered'
       }));
       
-      setMessages(transformedMessages);
+      console.log('✅ Setting local messages:', transformedMessages.length);
+      setLocalMessages(transformedMessages);
     } catch (error) {
-      console.error('Error fetching group messages:', error);
+      console.error('❌ Error fetching group messages:', error);
+      setLocalMessages([]); // Clear messages on error
     } finally {
       setLoading(false);
     }
@@ -111,6 +164,8 @@ const ChatContainer = () => {
   const handleSendMessage = (content) => {
     if (!activeGroup || !content.trim()) return;
 
+    console.log('📤 Sending message to group:', activeGroup.id);
+    
     const message = {
       groupId: activeGroup.id,
       content: content.trim(),
@@ -118,6 +173,21 @@ const ChatContainer = () => {
     };
 
     sendMessage(message);
+    
+    // ✅ FIXED: Optimistically add to local messages immediately
+    const optimisticMessage = {
+      id: `temp-${Date.now()}`,
+      content: content.trim(),
+      senderId: user?.userId,
+      senderName: 'You',
+      timestamp: new Date(),
+      type: 'text',
+      groupId: activeGroup.id,
+      isCurrentUser: true,
+      status: 'sending' // Will be updated when WebSocket confirms
+    };
+    
+    setLocalMessages(prev => [...prev, optimisticMessage]);
   };
 
   const handleCreateGroup = () => {
@@ -127,9 +197,16 @@ const ChatContainer = () => {
   const handleGroupCreated = (newGroup) => {
     // Add the new group to the list
     setGroups(prev => [...prev, newGroup]);
-    // Optionally select the new group automatically
+    // Select the new group automatically
     handleGroupSelect(newGroup);
   };
+
+  // FIXED: Clear messages when no group is selected
+  useEffect(() => {
+    if (!activeGroup) {
+      setLocalMessages([]);
+    }
+  }, [activeGroup]);
 
   return (
     <div className="flex h-full theme-bg">
@@ -176,8 +253,8 @@ const ChatContainer = () => {
         />
         
         <MessageList 
-          messages={messages}
-          currentUserId={user?.id}
+          messages={allMessages} 
+          currentUserId={user?.userId}
           isDarkMode={isDarkMode}
           colors={colors}
           loading={loading}
@@ -190,6 +267,14 @@ const ChatContainer = () => {
           isDarkMode={isDarkMode}
           colors={colors}
         />
+
+        {/* <MessageInput
+          onSendMessage={handleSendMessage}
+          disabled={false} // ← TEMPORARILY FORCE ENABLED
+          placeholder={activeGroup ? "Type a message..." : "Select a group to start chatting"}
+          isDarkMode={isDarkMode}
+          colors={colors}
+        /> */}
       </div>
 
       {/* User Sidebar */}
@@ -197,7 +282,7 @@ const ChatContainer = () => {
         {showUserSidebar && activeGroup && (
           <UserSidebar
             users={onlineUsers}
-            currentUserId={user?.id}
+            currentUserId={user?.userId}
             isDarkMode={isDarkMode}
             colors={colors}
           />
@@ -208,7 +293,7 @@ const ChatContainer = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onGroupCreated={handleGroupCreated}
-        currentUserId={user?.id}
+        currentUserId={user?.userId}
       />
     </div>
   );
