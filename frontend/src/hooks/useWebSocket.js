@@ -118,32 +118,38 @@ const useWebSocket = (userId, token) => {
     // Handle different message types based on your backend
     switch (data.type) {
       case 'message': // Match your backend's message type
-        setMessages(prev => [...prev, {
-          id: data.message_id || Date.now().toString(),
-          content: data.content,
-          senderId: data.sender_id,
-          senderName: data.sender_name || `User ${data.sender_id}`,
-          timestamp: new Date(data.created_at || Date.now()),
-          type: 'text',
-          groupId: data.group_id,
-          status: 'delivered'
-        }]);
+        // ✅ FIXED: Only add message if it belongs to active group
+        if (data.group_id === activeGroup) {
+          setMessages(prev => [...prev, {
+            id: data.message_id || Date.now().toString(),
+            content: data.content,
+            senderId: data.sender_id,
+            senderName: data.sender_name || `User ${data.sender_id}`,
+            timestamp: new Date(data.created_at || Date.now()),
+            type: 'text',
+            groupId: data.group_id,
+            status: 'delivered'
+          }]);
+        } else {
+          console.log('📨 Message received for different group:', data.group_id, 'Active:', activeGroup);
+        }
         break;
         
+      // Update all user references to use userId consistently
       case MESSAGE_TYPES.STATUS_UPDATE:
         setOnlineUsers(prev => {
           const userIndex = prev.findIndex(u => u.userId === data.user_id);
           if (userIndex > -1) {
-            // Update existing user
             const updated = [...prev];
             updated[userIndex] = { ...updated[userIndex], online: data.online_status };
             return updated;
           } else if (data.online_status) {
-            // Add new online user
             return [...prev, { 
-              id: data.user_id, 
+              userId: data.user_id,  // ✅ Consistent field name
               name: data.user_name || `User ${data.user_id}`,
-              online: true 
+              online: true,
+              username: `user${data.user_id}`,
+              status: 'online'
             }];
           }
           return prev;
@@ -154,7 +160,7 @@ const useWebSocket = (userId, token) => {
         setOnlineUsers(prev => [
           ...prev.filter(u => u.userId !== data.user_id),
           {
-            id: data.user_id,
+            userId: data.user_id,  // ✅ FIXED: Use userId consistently
             name: data.user_name || `User ${data.user_id}`,
             online: true
           }
@@ -170,7 +176,7 @@ const useWebSocket = (userId, token) => {
       default:
         console.log('❓ Unknown message type:', data.type, data);
     }
-  }, []);
+  }, [activeGroup]); // Add activeGroup dependency
 
   const sendWebSocketMessage = useCallback((messageData) => {
     if (!websocketRef.current || websocketRef.current.readyState !== WebSocket.OPEN) {

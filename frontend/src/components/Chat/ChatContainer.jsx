@@ -104,17 +104,22 @@ const ChatContainer = () => {
   // FIXED: Transform WebSocket online users to match UI expectations
   useEffect(() => {
     const transformedUsers = realTimeOnlineUsers.map(wsUser => ({
-      id: wsUser.user_id || wsUser.id,
-      name: wsUser.user_name || `User ${wsUser.user_id || wsUser.id}`,
-      username: wsUser.username || `user${wsUser.user_id || wsUser.id}`,
-      status: wsUser.online_status ? 'online' : 'offline',
-      role: 'member', // Default role for now
+      userId: wsUser.userId || wsUser.user_id || wsUser.id, // ✅ Handle all possible fields
+      name: wsUser.name || wsUser.user_name || `User ${wsUser.userId || wsUser.user_id || wsUser.id}`,
+      username: wsUser.username || `user${wsUser.userId || wsUser.user_id || wsUser.id}`,
+      status: wsUser.online ? 'online' : (wsUser.online_status ? 'online' : 'offline'),
+      role: 'member',
       isTyping: wsUser.isTyping || false,
       email: wsUser.email || ''
     }));
     
-    console.log('👥 Transformed online users:', transformedUsers);
-    setOnlineUsers(transformedUsers);
+    // ✅ Remove duplicates by userId
+    const uniqueUsers = transformedUsers.filter((user, index, self) => 
+      index === self.findIndex(u => u.userId === user.userId)
+    );
+    
+    console.log('👥 Transformed online users:', uniqueUsers);
+    setOnlineUsers(uniqueUsers);
   }, [realTimeOnlineUsers]);
 
   const handleGroupSelect = async (group) => {
