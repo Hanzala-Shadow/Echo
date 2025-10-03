@@ -10,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -33,6 +34,10 @@ public class SecurityConfig {
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
+
+    // Inject HOST_IP from docker-compose.yml
+    @Value("${HOST_IP:localhost}")
+    private String hostIp;
 
     public SecurityConfig(JwtService jwtService,
                           UserRepository userRepository,
@@ -66,22 +71,26 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // ADD THIS CORS CONFIGURATION METHOD
+    // CORS CONFIGURATION METHOD
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList( 
+
+        configuration.setAllowedOriginPatterns(Arrays.asList(
             "http://localhost:5173",
-            "http://127.0.0.1:5173"
+            "http://127.0.0.1:5173",
+            "http://" + hostIp + ":5173"   // pulled from docker-compose HOST_IP
         ));
+
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
+
 
     // ========================
     // JWT Authentication Filter

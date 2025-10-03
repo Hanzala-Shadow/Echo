@@ -1,38 +1,25 @@
 package com.chatapp.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
 @RestController
 public class NetworkController {
 
-    @GetMapping("/network/ip")
-    public Map<String, String> getServerIp() throws Exception {
-        String lanIp = getLocalIp();
-        Map<String, String> response = new HashMap<>();
-        response.put("ip", lanIp);
-        response.put("url", "http://" + lanIp + ":8080");
-        return response;
-    }
+    // Inject HOST_IP (from Docker env / script)
+    @Value("${HOST_IP}")
+    private String hostIp;
 
-    private String getLocalIp() throws Exception {
-        Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
-        while (nics.hasMoreElements()) {
-            NetworkInterface nic = nics.nextElement();
-            Enumeration<InetAddress> addrs = nic.getInetAddresses();
-            while (addrs.hasMoreElements()) {
-                InetAddress addr = addrs.nextElement();
-                if (!addr.isLoopbackAddress() && addr.isSiteLocalAddress()) {
-                    return addr.getHostAddress();
-                }
-            }
-        }
-        return InetAddress.getLocalHost().getHostAddress();
+    @GetMapping("/network/ip")
+    public Map<String, String> getServerIp() {
+        Map<String, String> response = new HashMap<>();
+        response.put("ip", hostIp);
+        response.put("frontendUrl", "http://" + hostIp + ":5173");   // for QR & UI access
+        response.put("backendUrl", "http://" + hostIp + ":8080/api"); // for API calls
+        return response;
     }
 }

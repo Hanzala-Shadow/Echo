@@ -24,7 +24,7 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     private UserRepository userRepository;
 
     @Autowired
-    private ChatService chatService;
+    private ChatService chatService; // ✅ Use ChatService for payload building
 
     @Autowired
     private ObjectMapper mapper;
@@ -34,38 +34,30 @@ public class ChatWebSocketHandler implements WebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        // JWT from query param: ws://host/ws/messages?token=JWT
         String token = Objects.requireNonNull(session.getUri().getQuery()).split("=")[1];
         Long userId;
 
         try {
             userId = jwtService.validateTokenAndGetUserId(token);
         } catch (Exception e) {
+            System.out.println("WebSocket connection error: " + e.getMessage());
+            e.printStackTrace();
             session.close(CloseStatus.NOT_ACCEPTABLE);
             return;
         }
 
-        // Mark user online
         User user = userRepository.findById(userId).orElseThrow();
         user.setOnlineStatus(true);
         userRepository.save(user);
 
         onlineUsers.put(userId, session);
 
-        // Broadcast online status
         broadcastStatus(userId, true);
 
-        // Send undelivered messages
+        // ✅ Use ChatService.buildMessagePayload instead of local copy
         List<MessageDelivery> undelivered = chatService.getUndeliveredMessages(userId);
         for (MessageDelivery delivery : undelivered) {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("message_id", delivery.getMessage().getMessageId());
-            payload.put("sender_id", delivery.getMessage().getSenderId());
-            payload.put("group_id", delivery.getMessage().getGroupId());
-            payload.put("content", delivery.getMessage().getContent());
-            payload.put("created_at", delivery.getMessage().getCreatedAt()); // LocalDateTime supported now
-            payload.put("delivered", true);
-
+            Map<String, Object> payload = chatService.buildMessagePayload(delivery.getMessage(), true);
             session.sendMessage(new TextMessage(mapper.writeValueAsString(payload)));
             chatService.markAsDelivered(delivery);
         }
@@ -73,7 +65,6 @@ public class ChatWebSocketHandler implements WebSocketHandler {
 
     @Override
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) throws Exception {
-        // Use TypeReference to ensure proper Map<String, Object> deserialization
         Map<String, Object> payload = mapper.readValue(
                 message.getPayload().toString(),
                 new TypeReference<Map<String, Object>>() {}
@@ -90,61 +81,53 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     }
 
     @Override
-public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
-    Long userId = onlineUsers.entrySet().stream()
-            .filter(e -> e.getValue().equals(session))
-            .map(Map.Entry::getKey)
-            .findFirst()
-            .orElse(null);
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
+        Long userId = onlineUsers.entrySet().stream()
+                .filter(e -> e.getValue().equals(session))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
 
-    if (userId != null) {
-        onlineUsers.remove(userId);
+        if (userId != null) {
+            onlineUsers.remove(userId);
 
-        User user = userRepository.findById(userId).orElseThrow();
-        user.setOnlineStatus(false);
-        userRepository.save(user);
+            User user = userRepository.findById(userId).orElseThrow();
+            user.setOnlineStatus(false);
+            userRepository.save(user);
 
-        broadcastStatus(userId, false);
+            broadcastStatus(userId, false);
 
-        // Log reason for debugging
-        switch (closeStatus.getCode()) {
-            case 1000: // NORMAL
-                System.out.println("User " + userId + " disconnected normally (logout).");
-                break;
-            case 1001: // GOING_AWAY
-                System.out.println("User " + userId + " disconnected (browser closed/tab closed).");
-                break;
-            case 1011: // SERVER_ERROR
-                System.out.println("User " + userId + " disconnected due to server error.");
-                break;
-            default:
-                System.out.println("User " + userId + " disconnected. Reason: " + closeStatus);
+            switch (closeStatus.getCode()) {
+                case 1000: System.out.println("User " + userId + " disconnected normally (logout)."); break;
+                case 1001: System.out.println("User " + userId + " disconnected (browser/tab closed)."); break;
+                case 1011: System.out.println("User " + userId + " disconnected due to server error."); break;
+                default:   System.out.println("User " + userId + " disconnected. Reason: " + closeStatus);
+            }
         }
     }
-}
 
     @Override
     public boolean supportsPartialMessages() {
         return false;
     }
 
+    /** Broadcast user online/offline status */
     private void broadcastStatus(Long userId, boolean online) throws Exception {
         Map<String, Object> status = new HashMap<>();
         status.put("type", "status_update");
         status.put("user_id", userId);
         status.put("online_status", online);
-        String msg = mapper.writeValueAsString(status);
 
+        String msg = mapper.writeValueAsString(status);
         for (WebSocketSession s : onlineUsers.values()) {
             if (s.isOpen()) s.sendMessage(new TextMessage(msg));
         }
     }
 
     public void disconnectUser(Long userId) throws Exception {
-         WebSocketSession session = onlineUsers.get(userId);
-         if (session != null && session.isOpen()) {
+        WebSocketSession session = onlineUsers.get(userId);
+        if (session != null && session.isOpen()) {
             session.close(CloseStatus.NORMAL);
         }
     }
-
 }

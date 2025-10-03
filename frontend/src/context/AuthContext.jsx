@@ -17,6 +17,14 @@ export const AuthProvider = ({ children }) => {
     return savedUser ? JSON.parse(savedUser) : null;
   });
   const [loading, setLoading] = useState(false);
+  const [apiBaseUrl, setApiBaseUrl] = useState(null);
+
+  // 🔑 Detect backend URL from environment
+  useEffect(() => {
+    const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
+    const backendUrl = `http://${hostIp}:8080/api`;
+    setApiBaseUrl(backendUrl);
+  }, []);
 
   // Add token getter
   const token = user?.token || null;
@@ -89,6 +97,7 @@ const login = async (email, password) => {
 
   // REGISTER - Updated to use ApiClient
   const register = async (username, email, password) => {
+    if (!apiBaseUrl) throw new Error("API not ready yet");
     setLoading(true);
     try {
       const data = await ApiClient.auth.register(username, email, password);

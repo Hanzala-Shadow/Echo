@@ -20,6 +20,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/chatappdb
       SPRING_DATASOURCE_USERNAME: chatuser
       SPRING_DATASOURCE_PASSWORD: 12345678
+      HOST_IP: ${HOST_IP}                   # inject Wi-Fi IP dynamically
     ports:
       - "8080:8080"
     depends_on:
@@ -29,6 +30,8 @@ services:
     build: ./frontend
     container_name: chatapp-frontend
     restart: always
+    environment:
+      VITE_HOST_IP: ${HOST_IP}   # frontend also knows your LAN IP
     ports:
       - "5173:5173"
     depends_on:
