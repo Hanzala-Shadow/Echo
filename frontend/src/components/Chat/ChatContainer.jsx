@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import useWebSocket from '../../hooks/useWebSocket';
 import ApiClient from '../../utils/apis'; 
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
@@ -11,7 +10,7 @@ import ChatHeader from './ChatHeader';
 import GroupCreateModal from './Groups/GroupCreateModal';
 
 const ChatContainer = () => {
-  const { user, token } = useAuth();
+  const { user, token, isWebSocketConnected, webSocketMessages, onlineUsers: realTimeOnlineUsers, sendWebSocketMessage, joinGroup, leaveGroup } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [activeGroup, setActiveGroup] = useState(null);
   const [showGroupSidebar, setShowGroupSidebar] = useState(true);
@@ -23,16 +22,10 @@ const ChatContainer = () => {
   const [loading, setLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const { 
-    isConnected, 
-    messages: realTimeMessages,
-    onlineUsers: realTimeOnlineUsers, 
-    sendMessage, 
-    joinGroup, 
-    leaveGroup,
-    clearGroupMessages,
-    clearAllMessages
-  } = useWebSocket(user?.userId, token);
+  const realTimeMessages = webSocketMessages;
+  const isConnected = isWebSocketConnected;
+
+  const sendMessage = sendWebSocketMessage;
 
   // Filter and combine messages for the active group ONLY
   const allMessages = useMemo(() => {
@@ -42,56 +35,62 @@ const ChatContainer = () => {
     }
     const groupId = activeGroup.id;
     console.log('🔍 Filtering messages for active group:', groupId);
-    console.log('📦 Total localMessages in state:', localMessages.length);
-    console.log('📦 Total realTimeMessages in state:', realTimeMessages.length);
-
-    // Debug: Log all unique groupIds in localMessages
-    const localGroupIds = [...new Set(localMessages.map(m => m.groupId))];
-    console.log('📦 Unique groupIds in localMessages:', localGroupIds);
-
-    // Debug: Log all unique groupIds in realTimeMessages
-    const rtGroupIds = [...new Set(realTimeMessages.map(m => m.groupId))];
-    console.log('📦 Unique groupIds in realTimeMessages:', rtGroupIds);
 
     // Get messages from both sources for THIS group only
-    const localGroupMessages = localMessages.filter(msg => msg.groupId === groupId);
-    const realtimeGroupMessages = realTimeMessages.filter(msg => msg.groupId === groupId);
+    const localGroupMessages = localMessages.filter(msg => {
+      const matches = msg.groupId === groupId;
+      if (matches) {
+        console.log('📋 Local message found:', { 
+          id: msg.id, 
+          content: msg.content, 
+          groupId: msg.groupId,
+          timestamp: msg.timestamp 
+        });
+      }
+      return matches;
+    });
+    
+    const realtimeGroupMessages = realTimeMessages.filter(msg => {
+      const matches = msg.groupId === groupId;
+      if (matches) {
+        console.log('📋 Real-time message found:', { 
+          id: msg.id, 
+          content: msg.content, 
+          groupId: msg.groupId,
+          timestamp: msg.timestamp 
+        });
+      }
+      return matches;
+    });
 
     console.log(`📊 Local messages for group ${groupId}:`, localGroupMessages.length);
-    if (localGroupMessages.length > 0) {
-      console.log('📋 Sample local message:', localGroupMessages[0]);
-    }
-    
     console.log(`📊 Real-time messages for group ${groupId}:`, realtimeGroupMessages.length);
-    if (realtimeGroupMessages.length > 0) {
-      console.log('📋 Sample real-time message:', realtimeGroupMessages[0]);
-    }
 
-    // Combine using a Map to avoid duplicates by ID
-    const messageMap = new Map();
+    // Combine ALL messages (no Map deduplication for now - let's see everything)
+    const allGroupMessages = [...localGroupMessages, ...realtimeGroupMessages];
+    
+    console.log('🔍 All raw messages before sorting:', allGroupMessages);
 
-    // Add local messages first
-    localGroupMessages.forEach(msg => {
-      messageMap.set(msg.id, msg);
-    });
-
-    // Add real-time messages (will override if same ID)
-    realtimeGroupMessages.forEach(msg => {
-      messageMap.set(msg.id, msg);
-    });
-
-    // Convert to array and sort by timestamp
-    const combined = Array.from(messageMap.values()).sort(
+    // Sort by timestamp
+    const sorted = allGroupMessages.sort(
       (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
     );
 
-    console.log(`✅ Total combined messages for group ${groupId}:`, combined.length);
-    if (combined.length > 0) {
-      console.log('✅ First message:', combined[0]);
-    }
+    console.log(`✅ Total sorted messages for group ${groupId}:`, sorted.length);
+    sorted.forEach((msg, index) => {
+      console.log(`   ${index + 1}. [${msg.id}] "${msg.content}" (${msg.timestamp})`);
+    });
     
-    return combined;
+    return sorted;
   }, [localMessages, realTimeMessages, activeGroup]);
+
+  // 🐛 DEBUG: Log when messages change
+  useEffect(() => {
+    console.log('🐛 DEBUG - allMessages changed:', {
+      total: allMessages.length,
+      messages: allMessages.map(m => ({ id: m.id, content: m.content, groupId: m.groupId }))
+    });
+  }, [allMessages]);
 
   // Fetch user's groups from API
   useEffect(() => {
@@ -168,40 +167,74 @@ const ChatContainer = () => {
       console.log('📥 Fetching message history for group:', groupId);
       const messageHistory = await ApiClient.chat.getGroupMessages(groupId);
       console.log('✅ Fetched message history:', messageHistory);
-      console.log('✅ Raw messages array:', messageHistory.messages);
+      
+      // 🚨 DEBUG: Log the exact structure to see field names
+      console.log('🔍 Full API response structure:', JSON.stringify(messageHistory, null, 2));
+      
+      // 🚨 FIX: Handle different response structures
+      let messagesArray = [];
+      
+      if (Array.isArray(messageHistory)) {
+        // If response is directly an array
+        messagesArray = messageHistory;
+        console.log('📦 Response is direct array');
+      } else if (messageHistory && Array.isArray(messageHistory.messages)) {
+        // If response has messages property
+        messagesArray = messageHistory.messages;
+        console.log('📦 Response has messages property');
+      } else if (messageHistory && messageHistory.content) {
+        // If response uses content property (common in paginated responses)
+        messagesArray = messageHistory.content;
+        console.log('📦 Response has content property');
+      } else {
+        console.log('❓ Unknown response structure, trying to extract messages');
+        messagesArray = messageHistory || [];
+      }
+
+      console.log('✅ Raw messages array length:', messagesArray.length);
 
       // Mark as loaded
       setLoadedGroups(prev => new Set([...prev, groupId]));
 
-      if (!messageHistory || !messageHistory.messages || messageHistory.messages.length === 0) {
+      if (messagesArray.length === 0) {
         console.log('ℹ️ No message history for group:', groupId);
         return;
       }
 
-      // Log first raw message to see structure
-      console.log('🔍 First raw message from API:', messageHistory.messages[0]);
+      // Log first raw message to see exact field names
+      console.log('🔍 First raw message from API:', messagesArray[0]);
+      console.log('🔍 All field names in first message:', Object.keys(messagesArray[0]));
 
-      const transformedMessages = messageHistory.messages.map((msg, index) => {
+      const transformedMessages = messagesArray.map((msg, index) => {
+        // 🚨 FIX: Use the exact field names from your backend
+        // Common field name variations in Java Spring Boot:
+        // - messageId / message_id / id
+        // - content / message
+        // - senderId / sender_id / userId
+        // - senderName / sender_name / username / userName
+        // - createdAt / created_at / timestamp
+        
         const transformed = {
           id: msg.messageId || msg.message_id || msg.id || `hist-${groupId}-${index}`,
           content: msg.content || msg.message || '',
-          senderId: msg.senderId || msg.sender_id,
-          senderName: msg.senderName || msg.sender_name || msg.username || `User ${msg.senderId || msg.sender_id}`,
+          senderId: msg.senderId || msg.sender_id || msg.userId,
+          senderName: msg.senderName || msg.sender_name || msg.username || msg.userName || `User ${msg.senderId || msg.sender_id || msg.userId}`,
           timestamp: new Date(msg.createdAt || msg.created_at || msg.timestamp || Date.now()),
           type: 'text',
-          groupId: groupId, // ALWAYS use the groupId parameter - most reliable!
-          isCurrentUser: (msg.senderId || msg.sender_id) === user?.userId,
+          groupId: groupId, // ALWAYS use the groupId parameter
+          isCurrentUser: (msg.senderId || msg.sender_id || msg.userId) === user?.userId,
           status: 'delivered'
         };
+        
         console.log(`🔄 Transformed message ${index + 1}:`, transformed);
         return transformed;
       });
 
       console.log(`✅ Transformed ${transformedMessages.length} historical messages for group ${groupId}`);
-      console.log('✅ Sample transformed message:', transformedMessages[0]);
 
       // Add to local messages
       setLocalMessages(prev => {
+        // Remove any existing messages for this group to avoid duplicates
         const filtered = prev.filter(msg => msg.groupId !== groupId);
         const updated = [...filtered, ...transformedMessages];
         console.log(`💾 Updated localMessages: ${prev.length} → ${updated.length}`);

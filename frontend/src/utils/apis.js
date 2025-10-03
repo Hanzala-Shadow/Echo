@@ -1,4 +1,30 @@
-const API_BASE_URL = 'http://localhost:8080/api';
+//const API_BASE_URL = 'http://localhost:8080/api';
+
+const getApiBaseUrl = () => {
+  try {
+    const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
+    
+    // Clean the host IP
+    const cleanIp = hostIp.trim().split(/\s+/)[1];
+    
+    // Validate IP format (basic validation)
+    if (!cleanIp || cleanIp.includes(' ')) {
+      console.warn('Invalid host IP, falling back to localhost');
+      return 'http://localhost:8080/api';
+    }
+    
+    const url = `http://${cleanIp}:8080/api`;
+    
+    // Test if URL is valid
+    new URL(url);
+    return url;
+  } catch (error) {
+    console.warn('Error constructing API URL, falling back to localhost:', error);
+    return 'http://localhost:8080/api';
+  }
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 class ApiClient {
   static async request(endpoint, options = {}) {
@@ -150,8 +176,11 @@ class ApiClient {
       }),
 
     // Get message history for a group
-    getGroupMessages: (groupId, limit = 50, offset = 0) => 
-      ApiClient.request(`/groups/${groupId}/messages?limit=${limit}&offset=${offset}`),
+    // getGroupMessages: (groupId, limit = 50, offset = 0) => 
+    //   ApiClient.request(`/groups/${groupId}/messages?limit=${limit}&offset=${offset}`),
+    getGroupMessages: (groupId) => 
+      ApiClient.request(`/groups/${groupId}/messages`),
+
 
     // Get members of a specific group
     getGroupMembers: (groupId) => 

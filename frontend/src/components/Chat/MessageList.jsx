@@ -3,6 +3,8 @@ import MessageBubble from './MessageBubble';
 import Skeleton from '../Common/Skeleton';
 
 const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading = false }) => {
+  console.log('🐛 MessageList rendering with:', messages.length, 'messages');
+  console.log('🐛 MessageList messages:', messages);
   const scrollRef = useRef(null);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
   const prevMessagesLengthRef = useRef(0);
