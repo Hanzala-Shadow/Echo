@@ -11,11 +11,8 @@ const MessageInput = ({
   const [message, setMessage] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
-  const recordingIntervalRef = useRef(null);
 
   // Handle emoji selection
   const onEmojiClick = (emojiData) => {
@@ -29,8 +26,7 @@ const MessageInput = ({
     const files = event.target.files;
     if (files.length > 0) {
       console.log('📁 Files selected:', files);
-      // Here you would handle file upload to your backend
-      // For now, we'll just log and reset the input
+      // TODO: Implement file upload to backend
       event.target.value = '';
       setShowAttachmentMenu(false);
     }
@@ -55,40 +51,6 @@ const MessageInput = ({
     }
   };
 
-  // Voice recording functionality
-  const startRecording = () => {
-    setIsRecording(true);
-    setRecordingTime(0);
-    recordingIntervalRef.current = setInterval(() => {
-      setRecordingTime(prev => prev + 1);
-    }, 1000);
-    
-    // Here you would integrate with Web Audio API for actual recording
-    console.log('🎤 Started recording...');
-  };
-
-  const stopRecording = () => {
-    setIsRecording(false);
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-    }
-    
-    if (recordingTime > 1) {
-      // Send voice message
-      console.log('🎤 Voice message recorded:', recordingTime + 's');
-      // You would send the audio blob to your backend here
-    }
-    
-    setRecordingTime(0);
-  };
-
-  // Format recording time
-  const formatRecordingTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const handleSend = () => {
     if (message.trim() && !disabled) {
       onSendMessage(message.trim());
@@ -100,6 +62,8 @@ const MessageInput = ({
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+      
+      textareaRef.current?.focus();
     }
   };
 
@@ -130,15 +94,6 @@ const MessageInput = ({
     }
   }, [disabled]);
 
-  // Cleanup recording interval
-  useEffect(() => {
-    return () => {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-    };
-  }, []);
-
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -167,9 +122,8 @@ const MessageInput = ({
       />
 
       <div className="flex items-end gap-3">
-        {/* Left side - Attachment and voice buttons */}
+        {/* Left side - Attachment button */}
         <div className="flex items-center gap-1">
-          {/* Attachment button with dropdown */}
           <div className="relative">
             <button
               onClick={(e) => {
@@ -200,28 +154,28 @@ const MessageInput = ({
                 <div className="p-2 space-y-1">
                   <button
                     onClick={() => triggerFileInput('image')}
-                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors theme-text"
                   >
                     <span>🖼️</span>
                     <span className="text-sm">Photos & Videos</span>
                   </button>
                   <button
                     onClick={() => triggerFileInput('document')}
-                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors theme-text"
                   >
                     <span>📄</span>
                     <span className="text-sm">Documents</span>
                   </button>
                   <button
                     onClick={() => triggerFileInput('audio')}
-                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors theme-text"
                   >
                     <span>🎵</span>
                     <span className="text-sm">Audio Files</span>
                   </button>
                   <button
                     onClick={() => triggerFileInput()}
-                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors theme-text"
                   >
                     <span>📁</span>
                     <span className="text-sm">Other Files</span>
@@ -230,23 +184,6 @@ const MessageInput = ({
               </div>
             )}
           </div>
-
-          {/* Voice message button */}
-          <button
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={stopRecording}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            disabled={disabled}
-            className={`p-2 rounded-lg transition-all ${
-              disabled ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600'
-            } ${isRecording ? 'animate-pulse bg-red-100 dark:bg-red-900' : ''}`}
-            style={{ color: isRecording ? '#ef4444' : colors.textSecondary }}
-            title="Hold to record voice message"
-          >
-            🎤
-          </button>
         </div>
 
         {/* Message textarea */}
@@ -256,19 +193,19 @@ const MessageInput = ({
             value={message}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={disabled ? "Select a group to start chatting" : placeholder}
+            placeholder={placeholder}
             disabled={disabled}
             className={`w-full min-h-[40px] max-h-[120px] resize-none py-2 px-4 pr-16 rounded-lg border-2 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text'
             }`}
             style={{ 
               backgroundColor: colors.background,
-              borderColor: disabled ? colors.border : '#3b82f6',
+              borderColor: colors.border,
               color: colors.text
             }}
           />
           
-          {/* Right side buttons */}
+          {/* Right side buttons inside textarea */}
           <div className="absolute right-2 bottom-2 flex items-center gap-1">
             {/* Emoji button */}
             <button
@@ -285,19 +222,6 @@ const MessageInput = ({
               title="Add emoji"
             >
               😊
-            </button>
-
-            {/* Formatting button (future feature) */}
-            <button
-              onClick={() => console.log("Formatting options")}
-              disabled={disabled}
-              className={`p-1 rounded transition-all ${
-                disabled ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110 cursor-pointer'
-              }`}
-              style={{ color: colors.textSecondary }}
-              title="Text formatting"
-            >
-              𝐀
             </button>
           </div>
         </div>
@@ -319,13 +243,6 @@ const MessageInput = ({
           Send
         </button>
       </div>
-
-      {/* Recording indicator */}
-      {isRecording && (
-        <div className="absolute top-0 left-0 right-0 bg-red-500 text-white py-1 px-4 text-sm text-center animate-pulse">
-          🎤 Recording... {formatRecordingTime(recordingTime)} - Release to send
-        </div>
-      )}
 
       {/* Emoji picker */}
       {showEmoji && !disabled && (
