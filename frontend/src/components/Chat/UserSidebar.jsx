@@ -1,7 +1,64 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import ApiClient from '../../utils/apis'; // Import API client to fetch user details
+import Skeleton from '../Common/Skeleton';
 
 const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
+  const [userDetails, setUserDetails] = useState({}); // Cache for user details
+  const [loadingDetails, setLoadingDetails] = useState(false); // Start as false since we might not need to load
+
+  // Fetch user details for users we don't have info for
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      const usersToFetch = users.filter(user => 
+        !userDetails[user.userId] && typeof user.userId === 'number'
+      );
+      
+      if (usersToFetch.length === 0) {
+        setLoadingDetails(false);
+        return;
+      }
+
+      console.log('🔍 Fetching details for users:', usersToFetch.map(u => u.userId));
+      setLoadingDetails(true);
+      
+      try {
+        const newDetails = { ...userDetails };
+        
+        // Fetch details for each user
+        for (const user of usersToFetch) {
+          try {
+            const userData = await ApiClient.users.getProfile(user.userId);
+            newDetails[user.userId] = {
+              name: userData.username || `User ${user.userId}`,
+              username: userData.username || `user${user.userId}`,
+              email: userData.email || '',
+              avatar: userData.avatar || null
+            };
+          } catch (error) {
+            console.warn(`❌ Could not fetch details for user ${user.userId}:`, error);
+            // Fallback data
+            newDetails[user.userId] = {
+              name: `User ${user.userId}`,
+              username: `user${user.userId}`,
+              email: '',
+              avatar: null
+            };
+          }
+        }
+        
+        setUserDetails(newDetails);
+      } catch (error) {
+        console.error('❌ Error fetching user details:', error);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
+
+    fetchUserDetails();
+  }, [users, userDetails]);
+
   const getInitials = (name) => {
+    if (!name) return '??';
     return name
       .split(" ")
       .map(word => word[0])
@@ -24,18 +81,75 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
   const getStatusColor = (status) => {
     switch (status) {
       case "online":
-        return '#10b981';
+        return '#10b981'; // green-500
       case "away":
-        return '#f59e0b';
+        return '#f59e0b'; // yellow-500
       case "busy":
-        return '#ef4444';
+        return '#ef4444'; // red-500
+      case "offline":
       default:
-        return '#6b7280';
+        return '#6b7280'; // gray-500
     }
   };
 
-  const onlineUsers = users.filter(user => user.status === "online");
-  const offlineUsers = users.filter(user => user.status !== "online");
+  // ✅ FIXED: Transform users with proper fallbacks and cached details
+  const transformedUsers = users.map(user => {
+    const details = userDetails[user.userId] || {};
+    
+    return {
+      id: user.userId || user.user_id,
+      name: user.name || details.name || `User ${user.userId || user.user_id}`,
+      username: user.username || details.username || `user${user.userId || user.user_id}`,
+      status: user.status || (user.online_status ? 'online' : 'offline'),
+      role: user.role || 'member',
+      isTyping: user.isTyping || false,
+      email: user.email || details.email || '',
+    };
+  });
+
+  console.log('👥 UserSidebar:', { 
+    loadingDetails, 
+    totalUsers: users.length, 
+    transformedUsers: transformedUsers.length 
+  });
+
+  const onlineUsers = transformedUsers.filter(user => user.status === "online");
+  const offlineUsers = transformedUsers.filter(user => user.status !== "online");
+
+  // Skeleton for user loading - only show when actively loading details
+  const renderUserSkeletons = () => {
+    return (
+      <div className="space-y-4 p-2">
+        {/* Online section skeleton */}
+        <div>
+          <Skeleton width="6rem" height="1rem" className="mb-2" />
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 p-2">
+              <Skeleton type="circle" width="2rem" height="2rem" />
+              <div className="flex-1 space-y-1">
+                <Skeleton width="8rem" height="0.875rem" />
+                <Skeleton width="6rem" height="0.75rem" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Offline section skeleton */}
+        <div>
+          <Skeleton width="6rem" height="1rem" className="mb-2" />
+          {Array.from({ length: 2 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 p-2 opacity-60">
+              <Skeleton type="circle" width="2rem" height="2rem" />
+              <div className="flex-1 space-y-1">
+                <Skeleton width="8rem" height="0.875rem" />
+                <Skeleton width="6rem" height="0.75rem" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div 
@@ -53,123 +167,162 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
               color: colors.textSecondary 
             }}
           >
-            {users.length}
+            {transformedUsers.length}
+          </span>
+        </div>
+        
+        {/* Connection Status */}
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <div className={`w-2 h-2 rounded-full ${
+            onlineUsers.length > 0 ? 'bg-green-500' : 'bg-gray-400'
+          }`}></div>
+          <span className="theme-text-secondary">
+            {onlineUsers.length} online, {offlineUsers.length} offline
           </span>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="p-2 space-y-4">
-          {onlineUsers.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium theme-text-secondary uppercase tracking-wider mb-2 px-2">
-                Online — {onlineUsers.length}
-              </h4>
-              <div className="space-y-1">
-                {onlineUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className={`flex items-center gap-3 p-2 rounded-md hover-scale cursor-pointer ${
-                      user.id === currentUserId ? 'theme-surface' : ''
-                    }`}
-                    style={{
-                      backgroundColor: user.id === currentUserId 
-                        ? (isDarkMode ? '#374151' : '#e5e7eb')
-                        : 'transparent'
-                    }}
-                  >
-                    <div className="relative">
-                      <div 
-                        className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
-                        style={{ 
-                          backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
-                          color: colors.text
-                        }}
-                      >
-                        {getInitials(user.name)}
-                      </div>
-                      <div 
-                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full"
-                        style={{ 
-                          backgroundColor: getStatusColor(user.status),
-                          borderColor: colors.surface
-                        }}
-                      />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm font-medium truncate theme-text">{user.name}</span>
-                        <span className="text-xs">{getRoleIcon(user.role)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs theme-text-secondary truncate">
-                          @{user.username}
-                        </span>
-                        {user.isTyping && (
-                          <span className="text-xs text-blue-500">typing...</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+        {loadingDetails ? (
+          renderUserSkeletons()
+        ) : (
+          <div className="p-2 space-y-4">
+            {onlineUsers.length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium theme-text-secondary uppercase tracking-wider mb-2 px-2">
+                  Online — {onlineUsers.length}
+                </h4>
+                <div className="space-y-1">
+                  {onlineUsers.map((user) => (
+                    <UserItem 
+                      key={user.userId}
+                      user={user}
+                      currentUserId={currentUserId}
+                      isDarkMode={isDarkMode}
+                      colors={colors}
+                      getInitials={getInitials}
+                      getRoleIcon={getRoleIcon}
+                      getStatusColor={getStatusColor}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {offlineUsers.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium theme-text-secondary uppercase tracking-wider mb-2 px-2">
-                Offline — {offlineUsers.length}
-              </h4>
-              <div className="space-y-1">
-                {offlineUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className={`flex items-center gap-3 p-2 rounded-md hover-scale cursor-pointer opacity-60 ${
-                      user.id === currentUserId ? 'theme-surface' : ''
-                    }`}
-                    style={{
-                      backgroundColor: user.id === currentUserId 
-                        ? (isDarkMode ? '#374151' : '#e5e7eb')
-                        : 'transparent'
-                    }}
-                  >
-                    <div className="relative">
-                      <div 
-                        className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
-                        style={{ 
-                          backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
-                          color: colors.text
-                        }}
-                      >
-                        {getInitials(user.name)}
-                      </div>
-                      <div 
-                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full"
-                        style={{ 
-                          backgroundColor: getStatusColor(user.status),
-                          borderColor: colors.surface
-                        }}
-                      />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm font-medium truncate theme-text">{user.name}</span>
-                        <span className="text-xs">{getRoleIcon(user.role)}</span>
-                      </div>
-                      <span className="text-xs theme-text-secondary truncate">
-                        @{user.username}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+            {offlineUsers.length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium theme-text-secondary uppercase tracking-wider mb-2 px-2">
+                  Offline — {offlineUsers.length}
+                </h4>
+                <div className="space-y-1">
+                  {offlineUsers.map((user) => (
+                    <UserItem 
+                      key={user.userId}
+                      user={user}
+                      currentUserId={currentUserId}
+                      isDarkMode={isDarkMode}
+                      colors={colors}
+                      getInitials={getInitials}
+                      getRoleIcon={getRoleIcon}
+                      getStatusColor={getStatusColor}
+                      isOffline={true}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {transformedUsers.length === 0 && (
+              <div className="text-center py-8">
+                <p className="theme-text-secondary text-sm">No members found</p>
+                <p className="theme-text-secondary text-xs mt-1">
+                  Users will appear here when they join
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ✅ EXTRACTED: User item component for better organization
+const UserItem = ({ 
+  user, 
+  currentUserId, 
+  isDarkMode, 
+  colors, 
+  getInitials, 
+  getRoleIcon, 
+  getStatusColor,
+  isOffline = false 
+}) => {
+  const [showProfile, setShowProfile] = useState(false);
+
+  return (
+    <div
+      className={`flex items-center gap-3 p-2 rounded-md hover-scale cursor-pointer transition-all ${
+        user.userId === currentUserId ? 'theme-surface' : ''
+      } ${isOffline ? 'opacity-60' : ''}`}
+      style={{
+        backgroundColor: user.userId === currentUserId 
+          ? (isDarkMode ? '#374151' : '#e5e7eb')
+          : 'transparent'
+      }}
+      onClick={() => setShowProfile(true)}
+      title={`Click to view ${user.name}'s profile`}
+    >
+      <div className="relative">
+        <div 
+          className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
+          style={{ 
+            backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
+            color: colors.text
+          }}
+        >
+          {getInitials(user.name)}
+        </div>
+        {!isOffline && (
+          <div 
+            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full"
+            style={{ 
+              backgroundColor: getStatusColor(user.status),
+              borderColor: colors.surface
+            }}
+          />
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1">
+          <span className="text-sm font-medium truncate theme-text">
+            {user.name}
+            {user.userId === currentUserId && (
+              <span className="text-xs ml-1 theme-text-secondary">(You)</span>
+            )}
+          </span>
+          <span className="text-xs">{getRoleIcon(user.role)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs theme-text-secondary truncate">
+            @{user.username}
+          </span>
+          {user.isTyping && !isOffline && (
+            <span className="text-xs text-blue-500 animate-pulse">typing...</span>
           )}
         </div>
       </div>
+      
+      {/* Online Status Dot for offline users */}
+      {isOffline && (
+        <div 
+          className="w-2 h-2 rounded-full"
+          style={{ 
+            backgroundColor: getStatusColor(user.status)
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -36,6 +36,8 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
     try {
       // Use the actual search endpoint from UserController
       const response = await ApiClient.request(`/users/search?query=${encodeURIComponent(query)}`);
+      console.log('🔍 Search response users:', response);
+      console.log('🔍 First user structure:', response[0]);
       setAvailableUsers(response);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -66,9 +68,9 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
   const toggleUserSelection = (user) => {
     setSelectedUsers(prev => {
-      const isSelected = prev.find(u => u.id === user.id);
+      const isSelected = prev.find(u => u.userId === user.userId);
       if (isSelected) {
-        return prev.filter(u => u.id !== user.id);
+        return prev.filter(u => u.userId !== user.userId);
       } else {
         return [...prev, user];
       }
@@ -100,13 +102,22 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
     try {
       // Prepare member IDs (include current user automatically)
-      const memberIds = selectedUsers.map(user => user.id);
+      console.log('👥 Selected users:', selectedUsers);
+      console.log('🆔 Selected user IDs:', selectedUsers.map(user => user.userId));
+      const memberIds = selectedUsers.map(user => user.userId);
+      console.log('📋 Final member IDs:', memberIds);
       if (currentUserId && !memberIds.includes(currentUserId)) {
         memberIds.push(currentUserId);
       }
 
+      console.log('📤 Sending to backend:', {
+        group_name: groupName.trim(),
+        member_ids: memberIds,
+      });
+
       // Create the group via API
       const newGroup = await ApiClient.chat.createGroup(groupName.trim(), memberIds);
+      console.log('✅ Backend response:', newGroup);
       
       // Notify parent component
       onGroupCreated({
@@ -218,7 +229,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                   <div className="flex flex-wrap gap-2">
                     {selectedUsers.map(user => (
                       <div 
-                        key={`selected-${user.id}`} 
+                        key={`selected-${user.userId}`} 
                         className="flex items-center bg-blue-100 dark:bg-blue-900 rounded-full px-3 py-1"
                       >
                         <span className="text-sm text-blue-800 dark:text-blue-200">
@@ -252,10 +263,10 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                     </p>
                   ) : (
                     availableUsers.map(user => {
-                      const isSelected = selectedUsers.find(u => u.id === user.id);
+                      const isSelected = selectedUsers.find(u => u.userId === user.userId);
                       return (
                         <div
-                          key={user.id}
+                          key={user.userId}
                           onClick={() => toggleUserSelection(user)}
                           className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
                             isSelected

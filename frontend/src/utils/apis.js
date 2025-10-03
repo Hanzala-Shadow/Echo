@@ -162,6 +162,10 @@ class ApiClient {
   // USER ENDPOINTS
   // ======================
   static users = {
+    // Get user by email  
+    getUserByEmail: (email) => 
+      ApiClient.request(`/users/email/${encodeURIComponent(email)}`),
+
     // Search users by username
     search: (query) => 
       ApiClient.request(`/users/search?query=${encodeURIComponent(query)}`),
@@ -172,7 +176,12 @@ class ApiClient {
 
     // Get all usernames
     getAllUsernames: () =>
-      ApiClient.request('/users/usernames')
+      ApiClient.request('/users/usernames'),
+
+    // Get current user
+    getCurrentUser: () =>
+      ApiClient.request('/users/me')
+
   };
 
   // ======================
