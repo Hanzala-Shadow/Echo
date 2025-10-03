@@ -77,6 +77,7 @@ public class ChatController {
                     "messages", dtoList
             ));
         } catch (Exception e) {
+            e.printStackTrace();
             return errorResponse("Unauthorized or invalid token", 401);
         }
     }

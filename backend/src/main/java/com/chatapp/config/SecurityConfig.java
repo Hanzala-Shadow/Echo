@@ -60,7 +60,6 @@ public class SecurityConfig {
                     "/network/qr",
                     "/network/ip",
                     "/api/mdns",
-                    "/media/**",
                     "/api/users/usernames",     // Added this line
                     "/api/users/search"       // Added this line
                 ).permitAll()
