@@ -1,21 +1,19 @@
-//const API_BASE_URL = 'http://localhost:8080/api';
-
 const getApiBaseUrl = () => {
   try {
     const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
-    
-    // Clean the host IP
-    const cleanIp = hostIp.trim().split(/\s+/)[1];
-    
-    // Validate IP format (basic validation)
+
+    // Clean the host IP - pick the first token
+    const cleanIp = hostIp.trim().split(/\s+/)[0];
+
+    // Validate IP format
     if (!cleanIp || cleanIp.includes(' ')) {
       console.warn('Invalid host IP, falling back to localhost');
       return 'http://localhost:8080/api';
     }
-    
+
     const url = `http://${cleanIp}:8080/api`;
-    
-    // Test if URL is valid
+
+    // Validate URL
     new URL(url);
     return url;
   } catch (error) {

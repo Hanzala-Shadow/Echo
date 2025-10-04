@@ -1,7 +1,15 @@
 // Chat API Service
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api' 
-  : 'http://localhost:8080/api';
+const getApiBaseUrl = () => {
+  try {
+    const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
+    const cleanIp = hostIp.trim().split(/\s+/)[0];
+    return `http://${cleanIp}:8080/api`;
+  } catch {
+    return 'http://localhost:8080/api';
+  }
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 class ChatService {
   constructor() {

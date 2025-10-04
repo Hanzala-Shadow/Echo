@@ -302,6 +302,7 @@ const ChatContainer = () => {
   };
 
   const handleCreateGroup = () => {
+    console.log('➕ Create group button clicked!');
     setIsCreateModalOpen(true);
   };
 
@@ -406,10 +407,12 @@ const ChatContainer = () => {
 
       {isCreateModalOpen && (
         <GroupCreateModal
+          isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
           onGroupCreated={handleGroupCreated}
           isDarkMode={isDarkMode}
           colors={colors}
+          currentUserId={user?.userId}
         />
       )}
     </div>

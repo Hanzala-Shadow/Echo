@@ -139,13 +139,14 @@ const useWebSocket = (userId, token) => {
     }
 
     try {
-      // 👇 keep hardcoded URL (no Vite env)
-      const socketUrl = `ws://localhost:8080/ws/messages?token=${token}`;
-      console.log('🔌 Connecting to WebSocket:', socketUrl);
+        const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
+        const cleanIp = hostIp.trim().split(/\s+/)[0];
+        const socketUrl = `ws://${cleanIp}:8080/ws/messages?token=${token}`;
+        console.log('🔌 Connecting to WebSocket:', socketUrl);
 
-      const socket = new WebSocket(socketUrl);
+        const socket = new WebSocket(socketUrl);
       
-      socket.onopen = () => {
+        socket.onopen = () => {
         console.log('✅ WebSocket connected successfully');
         setIsConnected(true);
         reconnectAttempts.current = 0;
