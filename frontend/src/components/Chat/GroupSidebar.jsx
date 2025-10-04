@@ -59,7 +59,7 @@ const GroupSidebar = ({
         </div>
       </div>
 
-       <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
           renderGroupSkeletons()
         ) : groups.length === 0 ? (
@@ -81,49 +81,49 @@ const GroupSidebar = ({
                   : 'transparent'
               }}
             >
-                <div className="relative">
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center font-medium"
-                    style={{ 
-                      backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
-                      color: colors.text
-                    }}
-                  >
-                    {getInitials(group.name)}
-                  </div>
-                  {group.isOnline && (
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                  )}
+              <div className="relative">
+                <div 
+                  className="h-12 w-12 rounded-full flex items-center justify-center font-medium"
+                  style={{ 
+                    backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
+                    color: colors.text
+                  }}
+                >
+                  {getInitials(group.name)}
                 </div>
+                {group.isOnline && (
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                )}
+              </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-medium truncate theme-text">{group.name}</h3>
-                    <div className="flex items-center gap-1">
-                      {group.memberCount > 2 ? (
-                        <span className="text-xs theme-text-secondary">#</span>
-                      ) : (
-                        <span className="text-xs theme-text-secondary">🔒</span>
-                      )}
-                    </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-medium truncate theme-text">{group.name}</h3>
+                  <div className="flex items-center gap-1">
+                    {group.memberCount > 2 ? (
+                      <span className="text-xs theme-text-secondary">#</span>
+                    ) : (
+                      <span className="text-xs theme-text-secondary">🔒</span>
+                    )}
                   </div>
-                  <p className="text-sm theme-text-secondary truncate">
-                    {group.description || 'No description'}
-                  </p>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs theme-text-secondary">
-                      {group.memberCount} members
-                    </span>
-                    <span className="text-xs theme-text-secondary">
-                      2m ago
-                    </span>
-                  </div>
+                </div>
+                <p className="text-sm theme-text-secondary truncate">
+                  {group.description || 'No description'}
+                </p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-xs theme-text-secondary">
+                    {group.memberCount} members
+                  </span>
+                  <span className="text-xs theme-text-secondary">
+                    2m ago
+                  </span>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            </div>
+          ))
+        )}
       </div>
+    </div>
   );
 };
 
