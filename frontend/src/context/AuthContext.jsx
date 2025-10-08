@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import ApiClient from '../utils/apis';  
 import useWebSocket from '../hooks/useWebSocket'; // Import the hook
 
@@ -15,10 +15,27 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
+    console.log('AuthProvider - initial user from localStorage:', savedUser);
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        console.log('AuthProvider - parsed user:', parsedUser);
+        return parsedUser;
+      } catch (e) {
+        console.error('AuthProvider - error parsing user from localStorage:', e);
+        localStorage.removeItem('user');
+        return null;
+      }
+    }
+    return null;
   });
   const [loading, setLoading] = useState(false);
   const [apiBaseUrl, setApiBaseUrl] = useState(null);
+
+  // Add debugging
+  useEffect(() => {
+    console.log('AuthProvider - user state changed:', user);
+  }, [user]);
 
   // Use the WebSocket hook - it will connect when userId and token are available
   const { 
@@ -29,12 +46,18 @@ export const AuthProvider = ({ children }) => {
     joinGroup, 
     leaveGroup,
     sendTypingIndicator,
-    disconnect
+    disconnect,
+    showNotification // Add showNotification from useWebSocket
   } = useWebSocket(user?.userId, user?.token);
 
   const getApiBaseUrl = () => {
     try {
       const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
+      
+      // For Docker environment or local development, use localhost
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:8080/api';
+      }
       
       // Clean the host IP - use first IP
       const cleanIp = hostIp.trim().split(/\s+/)[0];
@@ -70,17 +93,19 @@ export const AuthProvider = ({ children }) => {
       
       const baseUrl = apiBaseUrl || getApiBaseUrl();
       
-      const userData = await fetch(`${baseUrl}/users/email/${encodeURIComponent(email)}`, {
+      const response = await fetch(`${baseUrl}/users/email/${encodeURIComponent(email)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         }
-      }).then(response => {
-        if (!response.ok) throw new Error('Failed to fetch user data');
-        return response.json();
       });
       
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const userData = await response.json();
       console.log('📨 User data response:', userData);
       
       const userId = userData.userId || userData.id;
@@ -101,10 +126,13 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setLoading(true);
     try {
+      console.log('AuthProvider - attempting login with email:', email);
       const data = await ApiClient.auth.login(email, password);
+      console.log('AuthProvider - login response:', data);
       const token = data.token;
       
       const userId = await getUserIdByEmail(email, token);
+      console.log('AuthProvider - userId from API:', userId);
       
       if (!userId) {
         throw new Error('Could not retrieve user ID');
@@ -117,6 +145,7 @@ export const AuthProvider = ({ children }) => {
         userId: userId
       };
       
+      console.log('AuthProvider - setting user state:', loggedInUser);
       setUser(loggedInUser);
       localStorage.setItem("user", JSON.stringify(loggedInUser));
       
@@ -125,6 +154,10 @@ export const AuthProvider = ({ children }) => {
       return loggedInUser;
       
     } catch (error) {
+      console.error('AuthProvider - login error:', error);
+      // Clear user state on login error
+      setUser(null);
+      localStorage.removeItem("user");
       throw new Error(error.message || "Login failed");
     } finally {
       setLoading(false);
@@ -170,7 +203,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const value = { 
+  // Optimize the context value with useMemo to prevent unnecessary re-renders
+  const value = useMemo(() => ({
     user, 
     loading, 
     login, 
@@ -185,8 +219,26 @@ export const AuthProvider = ({ children }) => {
     joinGroup,
     leaveGroup,
     sendTypingIndicator,
-    apiBaseUrl
-  };
+    apiBaseUrl,
+    showNotification // Expose the showNotification function
+  }), [
+    user, 
+    loading, 
+    login, 
+    register, 
+    logout, 
+    isConnected,
+    webSocketMessages,
+    onlineUsers,
+    sendMessage,
+    joinGroup,
+    leaveGroup,
+    sendTypingIndicator,
+    apiBaseUrl,
+    showNotification
+  ]);
+
+  console.log('AuthProvider - providing context value:', value);
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

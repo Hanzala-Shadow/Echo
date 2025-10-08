@@ -1,16 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import EmojiPicker from 'emoji-picker-react';
+import FileUpload from './FileUpload';
+import { useAuth } from '../../context/AuthContext';
 
 const MessageInput = ({ 
   onSendMessage, 
   disabled = false,
   placeholder = "Type a message...",
   isDarkMode,
-  colors
+  colors,
+  activeGroupId,
+  onTyping // New prop for typing indicators
 }) => {
+  const { sendFile } = useAuth();
   const [message, setMessage] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingTimeout, setTypingTimeout] = useState(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -21,22 +31,47 @@ const MessageInput = ({
     textareaRef.current?.focus();
   };
 
+  // Handle file selection from FileUpload component
+  const handleFileSelect = (file) => {
+    setSelectedFile(file);
+  };
+
   // Handle file upload
-  const handleFileUpload = (event) => {
-    const files = event.target.files;
-    if (files.length > 0) {
-      console.log('📁 Files selected:', files);
-      // TODO: Implement file upload to backend
-      event.target.value = '';
-      setShowAttachmentMenu(false);
+  const handleFileUpload = async () => {
+    if (!selectedFile || !activeGroupId) {
+      console.error('No file selected or group ID missing');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // Send file through WebSocket
+      await sendFile(selectedFile, activeGroupId, (progress) => {
+        setUploadProgress(progress);
+      });
+      
+      console.log('File uploaded successfully');
+      setSelectedFile(null);
+    } catch (error) {
+      console.error('File upload failed:', error);
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
-  // Trigger file input click
-  const triggerFileInput = (type = 'all') => {
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = getAcceptType(type);
-      fileInputRef.current.click();
+  // Handle file selection from attachment menu
+  const handleFileInputChange = (event) => {
+    const files = event.target.files;
+    if (files.length > 0) {
+      const file = files[0];
+      console.log('📁 File selected:', file);
+      setSelectedFile(file);
+      // Auto-trigger file upload
+      event.target.value = '';
+      setShowAttachmentMenu(false);
     }
   };
 
@@ -51,19 +86,31 @@ const MessageInput = ({
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (message.trim() && !disabled) {
-      onSendMessage(message.trim());
-      setMessage("");
-      setShowEmoji(false);
-      setShowAttachmentMenu(false);
-      
-      // Reset textarea height
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+      try {
+        await onSendMessage(message.trim());
+        setMessage("");
+        setShowEmoji(false);
+        setShowAttachmentMenu(false);
+        
+        // Reset typing state
+        if (isTyping) {
+          setIsTyping(false);
+          if (onTyping) {
+            onTyping(false);
+          }
+        }
+        
+        // Reset textarea height
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+        
+        textareaRef.current?.focus();
+      } catch (error) {
+        console.error('Error sending message:', error);
       }
-      
-      textareaRef.current?.focus();
     }
   };
 
@@ -75,8 +122,38 @@ const MessageInput = ({
   };
 
   const handleChange = (e) => {
-    setMessage(e.target.value);
+    const newMessage = e.target.value;
+    setMessage(newMessage);
     adjustTextareaHeight();
+    
+    // Handle typing indicators with better debouncing
+    if (onTyping) {
+      if (newMessage.trim() && !isTyping) {
+        setIsTyping(true);
+        onTyping(true);
+        
+        // Clear any existing timeout
+        if (typingTimeout) {
+          clearTimeout(typingTimeout);
+        }
+        
+        // Set timeout to stop typing indicator after 1.5 seconds of inactivity
+        const timeout = setTimeout(() => {
+          setIsTyping(false);
+          onTyping(false);
+        }, 1500);
+        
+        setTypingTimeout(timeout);
+      } else if (!newMessage.trim() && isTyping) {
+        // If message is cleared, immediately stop typing
+        setIsTyping(false);
+        onTyping(false);
+        
+        if (typingTimeout) {
+          clearTimeout(typingTimeout);
+        }
+      }
+    }
   };
 
   const adjustTextareaHeight = () => {
@@ -93,6 +170,15 @@ const MessageInput = ({
       textareaRef.current.focus();
     }
   }, [disabled]);
+
+  // Clean up typing timeout
+  useEffect(() => {
+    return () => {
+      if (typingTimeout) {
+        clearTimeout(typingTimeout);
+      }
+    };
+  }, [typingTimeout]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -116,8 +202,7 @@ const MessageInput = ({
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileUpload}
-        multiple
+        onChange={handleFileInputChange}
         className="hidden"
       />
 
@@ -194,9 +279,9 @@ const MessageInput = ({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
-            disabled={disabled}
+            disabled={disabled || isUploading}
             className={`w-full min-h-[40px] max-h-[120px] resize-none py-2 px-4 pr-16 rounded-lg border-2 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text'
+              disabled || isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-text'
             }`}
             style={{ 
               backgroundColor: colors.background,
@@ -214,9 +299,9 @@ const MessageInput = ({
                 setShowEmoji(!showEmoji);
                 setShowAttachmentMenu(false);
               }}
-              disabled={disabled}
+              disabled={disabled || isUploading}
               className={`p-1 rounded transition-all ${
-                disabled ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110 cursor-pointer'
+                disabled || isUploading ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110 cursor-pointer'
               }`}
               style={{ color: colors.textSecondary }}
               title="Add emoji"
@@ -226,26 +311,77 @@ const MessageInput = ({
           </div>
         </div>
         
-        {/* Send button */}
-        <button
-          onClick={handleSend}
-          disabled={disabled || !message.trim()}
-          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-            disabled || !message.trim() 
-              ? 'opacity-50 cursor-not-allowed' 
-              : 'hover:scale-105 cursor-pointer'
-          }`}
-          style={{
-            backgroundColor: disabled || !message.trim() ? colors.border : '#3b82f6',
-            color: 'white'
-          }}
-        >
-          Send
-        </button>
+        {/* Send/File Upload button */}
+        {selectedFile ? (
+          <div className="flex items-center gap-2">
+            {isUploading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <span className="text-xs theme-text">{uploadProgress}%</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleFileUpload}
+                disabled={isUploading}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  isDarkMode 
+                    ? 'bg-white text-black hover:bg-gray-200' 
+                    : 'bg-black text-white hover:bg-gray-800'
+                }`}
+              >
+                Upload
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={disabled || !message.trim() || isUploading}
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+              disabled || !message.trim() || isUploading
+                ? 'opacity-50 cursor-not-allowed' 
+                : 'hover:scale-105 cursor-pointer'
+            }`}
+            style={{
+              backgroundColor: disabled || !message.trim() || isUploading 
+                ? (isDarkMode ? '#374151' : '#d1d5db') 
+                : (isDarkMode ? 'white' : 'black'),
+              color: disabled || !message.trim() || isUploading 
+                ? (isDarkMode ? '#9ca3af' : '#6b7280') 
+                : (isDarkMode ? 'black' : 'white')
+            }}
+          >
+            Send
+          </button>
+        )}
       </div>
 
+      {/* Selected file preview */}
+      {selectedFile && !isUploading && (
+        <div className="mt-2 p-2 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>📁</span>
+            <span className="text-sm theme-text truncate max-w-xs">
+              {selectedFile.name}
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedFile(null)}
+            className="text-red-500 hover:text-red-700"
+            title="Remove file"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Emoji picker */}
-      {showEmoji && !disabled && (
+      {showEmoji && !disabled && !isUploading && (
         <div 
           className="absolute bottom-full right-0 mb-2 z-50"
           onClick={(e) => e.stopPropagation()}
