@@ -1,0 +1,31 @@
+{
+  "name": "echo-chat-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Echo Chat Frontend - React Implementation",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite --port 5173",
+    "serve": "python -m http.server 5173"
+  },
+  "dependencies": {
+    "axios": "^1.3.4",
+    "emoji-picker-react": "^4.13.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.28",
+    "@types/react-dom": "^18.0.11",
+    "@vitejs/plugin-react": "^5.0.3",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.21",
+    "tailwindcss": "^3.2.7",
+    "vite": "^7.1.7"
+  }
+}

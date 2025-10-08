@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import ApiClient from '../../../utils/apis';
+import GroupChatService from '../../../services/groupChatService';
 
-const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) => {
+const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDarkMode, colors }) => {
+  console.log('GroupCreateModal rendered with props:', {
+    isOpen,
+    onClose: typeof onClose,
+    onGroupCreated: typeof onGroupCreated,
+    currentUserId,
+    isDarkMode,
+    colors: !!colors
+  });
+  
   const [step, setStep] = useState(1); // 1: Group details, 2: Add members
   const [groupName, setGroupName] = useState('');
   const [description, setDescription] = useState('');
@@ -14,6 +23,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
   // Reset form when modal opens/closes
   useEffect(() => {
+    console.log('GroupCreateModal useEffect - isOpen changed:', isOpen);
     if (isOpen) {
       setStep(1);
       setGroupName('');
@@ -25,7 +35,17 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
     }
   }, [isOpen]);
 
-  // Search for users using the actual backend endpoint
+  const handleNext = () => {
+    if (groupName.trim()) {
+      setStep(2);
+    }
+  };
+
+  const handleBack = () => {
+    setStep(1);
+  };
+
+  // Search for users using the group chat service
   const searchUsers = async (query) => {
     if (!query.trim()) {
       setAvailableUsers([]);
@@ -34,15 +54,14 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
     setSearchLoading(true);
     try {
-      // Use the actual search endpoint from UserController
-      const response = await ApiClient.request(`/users/search?query=${encodeURIComponent(query)}`);
-      console.log('🔍 Search response users:', response);
-      console.log('🔍 First user structure:', response[0]);
-      setAvailableUsers(response);
+      const users = await GroupChatService.searchUsers(query);
+      
+      // Filter out current user from search results
+      const filteredUsers = users.filter(user => user.userId !== currentUserId);
+      setAvailableUsers(filteredUsers);
     } catch (error) {
       console.error('Error searching users:', error);
       setAvailableUsers([]);
-      // Don't show error to user for search, just log it
     } finally {
       setSearchLoading(false);
     }
@@ -72,28 +91,21 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
       if (isSelected) {
         return prev.filter(u => u.userId !== user.userId);
       } else {
+        // Allow selecting 2 or more users (no upper limit)
         return [...prev, user];
       }
     });
   };
 
-  const handleNext = () => {
-    if (step === 1 && !groupName.trim()) {
+  const handleCreateGroup = async () => {
+    // Validate input - now require at least 2 users
+    if (!groupName.trim()) {
       setError('Group name is required');
       return;
     }
-    setStep(2);
-    setError('');
-  };
 
-  const handleBack = () => {
-    setStep(1);
-    setError('');
-  };
-
-  const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      setError('Group name is required');
+    if (selectedUsers.length < 2) {
+      setError('Please select at least 2 other users for the group');
       return;
     }
 
@@ -102,39 +114,30 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
     try {
       // Prepare member IDs (include current user automatically)
-      console.log('👥 Selected users:', selectedUsers);
-      console.log('🆔 Selected user IDs:', selectedUsers.map(user => user.userId));
       const memberIds = selectedUsers.map(user => user.userId);
-      console.log('📋 Final member IDs:', memberIds);
-      if (currentUserId && !memberIds.includes(currentUserId)) {
-        memberIds.push(currentUserId);
-      }
-
-      console.log('📤 Sending to backend:', {
-        group_name: groupName.trim(),
-        member_ids: memberIds,
-      });
-
-      // Create the group via API
-      const newGroup = await ApiClient.chat.createGroup(groupName.trim(), memberIds);
-      console.log('✅ Backend response:', newGroup);
       
-      // Notify parent component
-      onGroupCreated({
+      // Create the group via service
+      const newGroup = await GroupChatService.createGroup(groupName.trim(), memberIds);
+      
+      // Transform the response for consistency
+      const transformedGroup = {
         id: newGroup.group_id,
         name: groupName.trim(),
         description: description.trim(),
-        memberCount: memberIds.length,
+        memberCount: memberIds.length + 1, // Include creator
         isOnline: true,
         createdBy: currentUserId,
-        isDirect: memberIds.length === 2 // 1-on-1 chat if only 2 members
-      });
+        isDirect: false // Groups are never direct
+      };
+
+      // Notify parent component
+      onGroupCreated(transformedGroup);
 
       // Close modal
       onClose();
       
     } catch (error) {
-      setError(error.message || 'Failed to create group');
+      setError(error.message || 'Failed to create group. Please try again.');
       console.error('Error creating group:', error);
     } finally {
       setLoading(false);
@@ -145,38 +148,38 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
+      <div className={`rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className={`p-6 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
               {step === 1 ? 'Create New Group' : 'Add Members'}
             </h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl"
+              className={`text-2xl ${isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
             >
               ×
             </button>
           </div>
           <div className="flex mt-4 space-x-2">
-            <div className={`h-1 flex-1 rounded-full ${step >= 1 ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
-            <div className={`h-1 flex-1 rounded-full ${step >= 2 ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+            <div className={`h-1 flex-1 rounded-full ${step >= 1 ? 'bg-blue-500' : isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`}></div>
+            <div className={`h-1 flex-1 rounded-full ${step >= 2 ? 'bg-blue-500' : isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`}></div>
           </div>
         </div>
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[60vh]">
           {error && (
-            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg">
-              <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
+            <div className={`mb-4 p-3 rounded-lg border ${isDarkMode ? 'bg-red-900 border-red-700' : 'bg-red-100 border-red-300'}`}>
+              <p className={`text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>{error}</p>
             </div>
           )}
 
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Group Name *
                 </label>
                 <input
@@ -184,13 +187,17 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   placeholder="Enter group name"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    isDarkMode 
+                      ? 'bg-gray-700 text-white border-gray-600' 
+                      : 'bg-white text-gray-900 border-gray-300'
+                  } border`}
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Description (Optional)
                 </label>
                 <textarea
@@ -198,7 +205,11 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe the purpose of this group"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white resize-none"
+                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
+                    isDarkMode 
+                      ? 'bg-gray-700 text-white border-gray-600' 
+                      : 'bg-white text-gray-900 border-gray-300'
+                  } border`}
                 />
               </div>
             </div>
@@ -207,15 +218,22 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
           {step === 2 && (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Search Users
                 </label>
+                <p className={`text-xs mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Select at least 2 other users for the group
+                </p>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={handleSearchChange}
                   placeholder="Search by username"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    isDarkMode 
+                      ? 'bg-gray-700 text-white border-gray-600' 
+                      : 'bg-white text-gray-900 border-gray-300'
+                  } border`}
                   autoFocus
                 />
               </div>
@@ -223,21 +241,23 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
               {/* Selected Users */}
               {selectedUsers.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Selected Members ({selectedUsers.length})
+                  <h4 className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Selected Members ({selectedUsers.length} selected)
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedUsers.map(user => (
                       <div 
                         key={`selected-${user.userId}`} 
-                        className="flex items-center bg-blue-100 dark:bg-blue-900 rounded-full px-3 py-1"
+                        className={`flex items-center rounded-full px-3 py-1 ${
+                          isDarkMode ? 'bg-blue-900' : 'bg-blue-100'
+                        }`}
                       >
-                        <span className="text-sm text-blue-800 dark:text-blue-200">
+                        <span className={`text-sm ${isDarkMode ? 'text-blue-200' : 'text-blue-800'}`}>
                           {user.username}
                         </span>
                         <button
                           onClick={() => toggleUserSelection(user)}
-                          className="ml-2 text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100"
+                          className={`ml-2 ${isDarkMode ? 'text-blue-300 hover:text-blue-100' : 'text-blue-600 hover:text-blue-800'}`}
                         >
                           ×
                         </button>
@@ -249,7 +269,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
 
               {/* Available Users */}
               <div>
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <h4 className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Available Users
                 </h4>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -258,7 +278,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
                     </div>
                   ) : availableUsers.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                    <p className={`text-sm text-center py-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       {searchQuery ? 'No users found' : 'Start typing to search users'}
                     </p>
                   ) : (
@@ -270,27 +290,29 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                           onClick={() => toggleUserSelection(user)}
                           className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
                             isSelected
-                              ? 'bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700'
-                              : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
+                              ? (isDarkMode ? 'bg-blue-900 border border-blue-700' : 'bg-blue-50 border border-blue-200')
+                              : (isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-50 hover:bg-gray-100')
                           }`}
                         >
-                          <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-3">
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                            isDarkMode ? 'bg-gray-600' : 'bg-gray-300'
+                          }`}>
+                            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                               {user.username?.charAt(0).toUpperCase() || 'U'}
                             </span>
                           </div>
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                               {user.username}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                               {user.email}
                             </p>
                           </div>
                           <div className={`w-4 h-4 rounded border ${
                             isSelected
                               ? 'bg-blue-500 border-blue-500'
-                              : 'border-gray-300 dark:border-gray-600'
+                              : isDarkMode ? 'border-gray-600' : 'border-gray-300'
                           }`}>
                             {isSelected && (
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -309,19 +331,19 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className={`p-6 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex justify-between space-x-3">
             {step === 1 ? (
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                className={`px-4 py-2 transition-colors ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}
               >
                 Cancel
               </button>
             ) : (
               <button
                 onClick={handleBack}
-                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                className={`px-4 py-2 transition-colors ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}
               >
                 Back
               </button>
@@ -332,7 +354,11 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                 <button
                   onClick={handleNext}
                   disabled={!groupName.trim()}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    groupName.trim()
+                      ? 'bg-blue-500 text-white hover:bg-blue-600'
+                      : isDarkMode ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
                   Next
                 </button>
@@ -340,7 +366,11 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId }) =>
                 <button
                   onClick={handleCreateGroup}
                   disabled={loading}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center"
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center ${
+                    loading
+                      ? isDarkMode ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-green-500 text-white hover:bg-green-600'
+                  }`}
                 >
                   {loading ? (
                     <>

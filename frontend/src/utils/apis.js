@@ -1,19 +1,29 @@
+//const API_BASE_URL = 'http://localhost:8080/api';
+
 const getApiBaseUrl = () => {
   try {
+    // When running in browser (which is the case for Vite dev server),
+    // we need to connect to the backend through the host machine
+    // The backend is mapped to port 8080 on the host
     const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
-
-    // Clean the host IP - pick the first token
+    
+    // For Docker environment or local development, use localhost
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:8080/api';
+    }
+    
+    // For other cases, construct URL with host IP
     const cleanIp = hostIp.trim().split(/\s+/)[0];
-
+    
     // Validate IP format
     if (!cleanIp || cleanIp.includes(' ')) {
       console.warn('Invalid host IP, falling back to localhost');
       return 'http://localhost:8080/api';
     }
-
+    
     const url = `http://${cleanIp}:8080/api`;
-
-    // Validate URL
+    
+    // Test if URL is valid
     new URL(url);
     return url;
   } catch (error) {
@@ -75,7 +85,16 @@ class ApiClient {
         console.log('📦 Request body:', config.body);
       }
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...config,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
 
       console.log('📥 Response status:', response.status, response.statusText);
       console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()));
@@ -127,8 +146,10 @@ class ApiClient {
       console.error(`💥 API Error (${endpoint}):`, error);
       
       // Handle network errors specifically
-      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        throw new Error('Network error - Unable to connect to server');
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - Please check your network connection');
+      } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        throw new Error('Network error - Unable to connect to server. Please check if the backend is running.');
       }
       
       throw error;
@@ -182,7 +203,11 @@ class ApiClient {
 
     // Get members of a specific group
     getGroupMembers: (groupId) => 
-      ApiClient.request(`/groups/${groupId}/members`)
+      ApiClient.request(`/groups/${groupId}/members`),
+
+    // Get dashboard statistics
+    getDashboardStats: () => 
+      ApiClient.request('/dashboard/stats')
   };
 
   // ======================
@@ -210,6 +235,38 @@ class ApiClient {
       ApiClient.request('/users/me')
 
   };
+
+  // ======================
+  // FRIEND ENDPOINTS
+  // ======================
+  static friends = {
+    // Send a friend request
+    sendRequest: (receiverId) => 
+      ApiClient.request('/friends/request', {
+        method: 'POST',
+        body: { receiverId }
+      }),
+
+    // Get pending friend requests
+    getPendingRequests: () => 
+      ApiClient.request('/friends/requests'),
+
+    // Accept a friend request
+    acceptRequest: (requestId) => 
+      ApiClient.request(`/friends/accept/${requestId}`, {
+        method: 'POST'
+      }),
+
+    // Reject a friend request
+    rejectRequest: (requestId) => 
+      ApiClient.request(`/friends/reject/${requestId}`, {
+        method: 'POST'
+      }),
+
+    // Get all friend requests
+    getAllRequests: () => 
+      ApiClient.request('/friends/all')
+  }
 
   // ======================
   // NETWORK ENDPOINTS
