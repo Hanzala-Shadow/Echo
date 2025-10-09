@@ -3,8 +3,6 @@ import MessageBubble from './MessageBubble';
 import Skeleton from '../Common/Skeleton';
 
 const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading = false }) => {
-  console.log('🐛 MessageList rendering with:', messages.length, 'messages');
-  console.log('🐛 MessageList messages:', messages);
   const scrollRef = useRef(null);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
   const prevMessagesLengthRef = useRef(0);
@@ -119,7 +117,12 @@ const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading
                 scrollToBottom('smooth');
                 setIsAutoScrolling(true);
               }}
-              className="fixed bottom-24 right-8 z-10 p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-all hover:scale-110"
+              className="fixed bottom-24 right-8 z-10 p-3 rounded-full shadow-lg hover:scale-110 transition-all"
+              style={{
+                backgroundColor: isDarkMode ? '#ffffff' : '#000000',
+                color: isDarkMode ? '#000000' : '#ffffff',
+                border: `1px solid ${isDarkMode ? '#d1d5db' : '#4b5563'}`
+              }}
               title="Scroll to bottom"
             >
               ↓

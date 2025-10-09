@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Arcade Dashboard Visualization</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #000;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 4px dashed #ffcc00;
+            border-radius: 20px;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(to right, #4b0082, #00008b, #4b0082);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+            animation: pulse 2s infinite;
+        }
+        
+        .header h1 {
+            color: #ffcc00;
+            font-size: 2em;
+            margin: 0;
+            text-shadow: 0 0 10px #ffcc00;
+        }
+        
+        .welcome-module {
+            background: linear-gradient(135deg, #000 0%, #111 100%);
+            border: 4px dashed #ffcc00;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .welcome-module::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 25% 25%, #ffcc00 1px, transparent 1px),
+                radial-gradient(circle at 75% 75%, #ffcc00 1px, transparent 1px);
+            background-size: 30px 30px;
+            opacity: 0.2;
+        }
+        
+        .welcome-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+        
+        .welcome-content h2 {
+            color: #ffcc00;
+            font-size: 1.8em;
+        }
+        
+        .welcome-content p {
+            color: #00ff00;
+            font-size: 1.2em;
+        }
+        
+        .start-button {
+            background: linear-gradient(to right, #00c853, #2962ff);
+            color: white;
+            border: 2px solid #ffcc00;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 0 15px #00c853;
+            transition: transform 0.3s;
+        }
+        
+        .start-button:hover {
+            transform: scale(1.1);
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        
+        .nav-button {
+            background: linear-gradient(to right, #666, #888);
+            color: white;
+            border: 4px solid #666;
+            padding: 15px 25px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .nav-button.active {
+            background: linear-gradient(to right, #ffcc00, #ff6600);
+            color: black;
+            border-color: #ffcc00;
+            animation: pulse 1s infinite;
+            box-shadow: 0 0 20px #ffcc00;
+        }
+        
+        .nav-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .content-area {
+            background: linear-gradient(135deg, #000 0%, #222 100%);
+            border: 4px dashed #0088ff;
+            border-radius: 15px;
+            padding: 20px;
+        }
+        
+        .content-area h2 {
+            color: #ffcc00;
+            font-size: 1.5em;
+            margin-top: 0;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .card {
+            background: #111;
+            border: 2px solid #0088ff;
+            border-radius: 10px;
+            padding: 15px;
+            transition: all 0.3s;
+        }
+        
+        .card:hover {
+            transform: scale(1.02);
+            border-color: #0088ff;
+        }
+        
+        .card h3 {
+            color: #ffcc00;
+            margin-top: 0;
+        }
+        
+        .card p {
+            color: #00ff00;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
+        .legend {
+            margin-top: 30px;
+            padding: 20px;
+            background: #222;
+            border-radius: 10px;
+        }
+        
+        .legend h3 {
+            color: #ffcc00;
+            margin-top: 0;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            margin-right: 10px;
+            border-radius: 5px;
+        }
+        
+        .yellow-gradient {
+            background: linear-gradient(to right, #ffcc00, #ff6600);
+        }
+        
+        .gray-gradient {
+            background: linear-gradient(to right, #666, #888);
+        }
+        
+        .purple-gradient {
+            background: linear-gradient(to right, #4b0082, #00008b);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>ECHO CHAT ARCADE</h1>
+        </div>
+        
+        <div class="welcome-module">
+            <div class="welcome-content">
+                <h2>WELCOME BACK, PLAYER!</h2>
+                <p>READY TO CHAT? INSERT COIN TO CONTINUE...</p>
+                <button class="start-button">START GAME</button>
+            </div>
+        </div>
+        
+        <div class="navigation">
+            <button class="nav-button">👥 GROUPS</button>
+            <button class="nav-button active">👤 USERS</button>
+            <button class="nav-button">⚙️ SETTINGS</button>
+        </div>
+        
+        <div class="content-area">
+            <h2>USERS</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3>ALICE</h3>
+                    <p>🟢 Online</p>
+                    <button class="start-button">CHAT</button>
+                </div>
+                <div class="card">
+                    <h3>BOB</h3>
+                    <p>🔴 Offline</p>
+                    <button class="start-button">CHAT</button>
+                </div>
+                <div class="card">
+                    <h3>CHARLIE</h3>
+                    <p>🟢 Online</p>
+                    <button class="start-button">CHAT</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <h3>Retro Arcade Dashboard Visualization</h3>
+            <div class="legend-item">
+                <div class="legend-color yellow-gradient"></div>
+                <span>Active/Selected Button - Yellow to Orange Gradient</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color gray-gradient"></div>
+                <span>Inactive Button - Gray Gradient (Changes with Theme)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color purple-gradient"></div>
+                <span>Header - Purple to Blue Gradient</span>
+            </div>
+            <p>This visualization shows what the retro arcade dashboard should look like with:</p>
+            <ul>
+                <li>🎮 Retro arcade styling with dashed borders</li>
+                <li>🎨 Theme-aware navigation buttons that change color with light/dark mode</li>
+                <li>✨ High contrast yellow-to-orange gradient for selected button</li>
+                <li>💫 Pulsing animations for active elements</li>
+                <li>🌟 Grid patterns and retro color schemes</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -96,11 +96,21 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
   const transformedUsers = users.map(user => {
     const details = userDetails[user.userId] || {};
     
+    // Ensure we have a proper status
+    let status = 'offline';
+    if (user.status) {
+      status = user.status;
+    } else if (user.online_status !== undefined) {
+      status = user.online_status ? 'online' : 'offline';
+    } else if (user.online !== undefined) {
+      status = user.online ? 'online' : 'offline';
+    }
+    
     return {
-      id: user.userId || user.user_id,
+      userId: user.userId || user.user_id,
       name: user.name || details.name || `User ${user.userId || user.user_id}`,
       username: user.username || details.username || `user${user.userId || user.user_id}`,
-      status: user.status || (user.online_status ? 'online' : 'offline'),
+      status: status,
       role: user.role || 'member',
       isTyping: user.isTyping || false,
       email: user.email || details.email || '',
@@ -113,8 +123,18 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
     transformedUsers: transformedUsers.length 
   });
 
-  const onlineUsers = transformedUsers.filter(user => user.status === "online");
-  const offlineUsers = transformedUsers.filter(user => user.status !== "online");
+  // Sort users: online first, then by name
+  const sortedUsers = [...transformedUsers].sort((a, b) => {
+    // Online users first
+    if (a.status === 'online' && b.status !== 'online') return -1;
+    if (b.status === 'online' && a.status !== 'online') return 1;
+    
+    // Then alphabetically by name
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  const onlineUsers = sortedUsers.filter(user => user.status === "online");
+  const offlineUsers = sortedUsers.filter(user => user.status !== "online");
 
   // Skeleton for user loading - only show when actively loading details
   const renderUserSkeletons = () => {
@@ -164,7 +184,8 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
             className="ml-auto px-2 py-1 rounded-full text-xs"
             style={{ 
               backgroundColor: colors.background,
-              color: colors.textSecondary 
+              color: colors.textSecondary,
+              border: `1px solid ${colors.border}`
             }}
           >
             {transformedUsers.length}
@@ -260,15 +281,21 @@ const UserItem = ({
 }) => {
   const [showProfile, setShowProfile] = useState(false);
 
+  // Determine if user is online
+  const isUserOnline = user.status === 'online';
+
   return (
     <div
-      className={`flex items-center gap-3 p-2 rounded-md hover-scale cursor-pointer transition-all ${
+      className={`flex items-center gap-3 p-2 rounded-md hover:scale-[1.02] cursor-pointer transition-all ${
         user.userId === currentUserId ? 'theme-surface' : ''
       } ${isOffline ? 'opacity-60' : ''}`}
       style={{
         backgroundColor: user.userId === currentUserId 
           ? (isDarkMode ? '#374151' : '#e5e7eb')
-          : 'transparent'
+          : 'transparent',
+        border: user.userId === currentUserId 
+          ? `1px solid ${colors.border}` 
+          : '1px solid transparent'
       }}
       onClick={() => setShowProfile(true)}
       title={`Click to view ${user.name}'s profile`}
@@ -278,20 +305,23 @@ const UserItem = ({
           className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
           style={{ 
             backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
-            color: colors.text
+            color: isDarkMode ? '#ffffff' : '#000000'
           }}
         >
           {getInitials(user.name)}
         </div>
-        {!isOffline && (
-          <div 
-            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full"
-            style={{ 
-              backgroundColor: getStatusColor(user.status),
-              borderColor: colors.surface
-            }}
-          />
-        )}
+        {/* Online status indicator - always show for online users, show muted for offline */}
+        <div 
+          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full ${
+            isUserOnline ? 'animate-pulse' : ''
+          }`}
+          style={{ 
+            backgroundColor: getStatusColor(user.status),
+            borderColor: 'white',
+            boxShadow: '0 0 0 1px white'
+          }}
+          title={user.status}
+        />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -308,21 +338,11 @@ const UserItem = ({
           <span className="text-xs theme-text-secondary truncate">
             @{user.username}
           </span>
-          {user.isTyping && !isOffline && (
+          {user.isTyping && (
             <span className="text-xs text-blue-500 animate-pulse">typing...</span>
           )}
         </div>
       </div>
-      
-      {/* Online Status Dot for offline users */}
-      {isOffline && (
-        <div 
-          className="w-2 h-2 rounded-full"
-          style={{ 
-            backgroundColor: getStatusColor(user.status)
-          }}
-        />
-      )}
     </div>
   );
 };

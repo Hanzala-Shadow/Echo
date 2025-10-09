@@ -3,7 +3,7 @@
 Write-Output "Detecting LAN IP..."
 
 $wifiIp = (Get-NetIPAddress -AddressFamily IPv4 `
-    | Where-Object { $_.InterfaceAlias -match "Wi-Fi" -and $_.IPAddress -like "192.168.*" } `
+    | Where-Object { $_.InterfaceAlias -match "Wi-Fi" } `
 ).IPAddress
 
 if ($wifiIp) {

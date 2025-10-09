@@ -10,6 +10,20 @@ const GroupSidebar = ({
   colors,
   loading = false 
 }) => {
+  console.log('GroupSidebar rendered with props:', {
+    groups: groups?.length,
+    activeGroupId,
+    onGroupSelect: typeof onGroupSelect,
+    onCreateGroup: typeof onCreateGroup,
+    isDarkMode,
+    loading
+  });
+  
+  // Additional debugging
+  React.useEffect(() => {
+    console.log('GroupSidebar mounted/updated');
+  }, []);
+
   const getInitials = (name) => {
     return name
       .split(" ")
@@ -45,85 +59,129 @@ const GroupSidebar = ({
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
-      <div className="p-4 border-b-2 theme-border">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold theme-text">Groups</h2>
+      <div className="p-3 border-b theme-border">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold theme-text">Groups</h2>
           <button
-            onClick={onCreateGroup}
-            className="p-2 rounded-lg hover-scale theme-text"
-            style={{ backgroundColor: colors.background }}
+            onClick={(e) => {
+              console.log('🎯 Create group button clicked - PLUS SIGN');
+              console.log('onCreateGroup function:', onCreateGroup);
+              if (onCreateGroup && typeof onCreateGroup === 'function') {
+                console.log('🎯 Calling onCreateGroup function');
+                onCreateGroup();
+              } else {
+                console.log('❌ onCreateGroup function is not defined or not a function');
+              }
+            }}
+            className="p-2 rounded-lg hover-scale theme-text flex items-center justify-center cursor-pointer z-50 relative"
+            style={{ 
+              backgroundColor: colors.background,
+              border: `1px solid ${colors.border}`
+            }}
             title="Create group"
           >
-            ➕
+            <span className="text-xl font-bold">+</span>
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+       <div className="flex-1 overflow-y-auto">
         {loading ? (
           renderGroupSkeletons()
         ) : groups.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="theme-text-secondary">No groups yet</p>
-            <p className="text-sm theme-text-secondary">Create your first group!</p>
+          <div className="text-center py-6">
+            <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-3"
+              style={{ backgroundColor: isDarkMode ? '#374151' : '#e5e7eb' }}>
+              <span className="text-2xl">👥</span>
+            </div>
+            <p className="theme-text-secondary text-sm">No groups yet</p>
+            <p className="text-xs theme-text-secondary mt-1">Create your first group!</p>
+            <button
+              onClick={(e) => {
+                console.log('🎯 Create group button clicked - EMPTY STATE');
+                console.log('onCreateGroup function:', onCreateGroup);
+                if (onCreateGroup && typeof onCreateGroup === 'function') {
+                  console.log('🎯 Calling onCreateGroup function');
+                  onCreateGroup();
+                } else {
+                  console.log('❌ onCreateGroup function is not defined or not a function');
+                }
+              }}
+              className="mt-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer z-50 relative"
+              style={{ 
+                backgroundColor: colors.primary,
+                color: 'white'
+              }}
+            >
+              Create Group
+            </button>
           </div>
         ) : (
           groups.map((group) => (
             <div
               key={group.id}
               onClick={() => onGroupSelect(group)}
-              className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover-scale ${
+              className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
                 activeGroupId === group.id ? 'theme-surface' : ''
               }`}
               style={{
                 backgroundColor: activeGroupId === group.id 
                   ? (isDarkMode ? '#374151' : '#e5e7eb')
-                  : 'transparent'
+                  : 'transparent',
+                border: activeGroupId === group.id 
+                  ? `1px solid ${colors.border}` 
+                  : '1px solid transparent'
               }}
             >
-              <div className="relative">
-                <div 
-                  className="h-12 w-12 rounded-full flex items-center justify-center font-medium"
-                  style={{ 
-                    backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
-                    color: colors.text
-                  }}
-                >
-                  {getInitials(group.name)}
+                <div className="relative">
+                  <div 
+                    className="h-10 w-10 rounded-full flex items-center justify-center font-medium text-sm"
+                    style={{ 
+                      backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
+                      color: isDarkMode ? '#ffffff' : '#000000'
+                    }}
+                  >
+                    {getInitials(group.name)}
+                  </div>
+                  {/* Show online indicator if any members are online */}
+                  {group.isOnline && (
+                    <div 
+                      className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full animate-pulse"
+                      style={{
+                        backgroundColor: '#10b981', // green-500
+                        borderColor: 'white',
+                        boxShadow: '0 0 0 1px white'
+                      }}
+                      title="Group has online members"
+                    ></div>
+                  )}
                 </div>
-                {group.isOnline && (
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                )}
-              </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-medium truncate theme-text">{group.name}</h3>
-                  <div className="flex items-center gap-1">
-                    {group.memberCount > 2 ? (
-                      <span className="text-xs theme-text-secondary">#</span>
-                    ) : (
-                      <span className="text-xs theme-text-secondary">🔒</span>
-                    )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <h3 className="font-medium truncate theme-text text-sm">{group.name}</h3>
+                    <div className="flex items-center gap-1">
+                      {/* Show group icon for groups with 3 or more members */}
+                      <span className="text-xs theme-text-secondary">👥</span>
+                    </div>
+                  </div>
+                  <p className="text-xs theme-text-secondary truncate">
+                    {group.description || 'No description'}
+                  </p>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs theme-text-secondary">
+                      {group.memberCount} members
+                    </span>
+                    <span className="text-xs theme-text-secondary">
+                      2m ago
+                    </span>
                   </div>
                 </div>
-                <p className="text-sm theme-text-secondary truncate">
-                  {group.description || 'No description'}
-                </p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs theme-text-secondary">
-                    {group.memberCount} members
-                  </span>
-                  <span className="text-xs theme-text-secondary">
-                    2m ago
-                  </span>
-                </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
       </div>
-    </div>
   );
 };
 

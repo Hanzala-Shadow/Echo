@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import ApiClient from '../../utils/apis'; 
@@ -10,7 +11,9 @@ import ChatHeader from './ChatHeader';
 import GroupCreateModal from './Groups/GroupCreateModal';
 
 const ChatContainer = () => {
-  const { user, token, isWebSocketConnected, webSocketMessages, onlineUsers: realTimeOnlineUsers, sendWebSocketMessage, joinGroup, leaveGroup } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, token, isWebSocketConnected, webSocketMessages, onlineUsers: realTimeOnlineUsers, sendWebSocketMessage, joinGroup, leaveGroup, showNotification } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [activeGroup, setActiveGroup] = useState(null);
   const [showGroupSidebar, setShowGroupSidebar] = useState(true);
@@ -21,13 +24,14 @@ const ChatContainer = () => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]); // Track members of active group
 
   const realTimeMessages = webSocketMessages;
   const isConnected = isWebSocketConnected;
 
   const sendMessage = sendWebSocketMessage;
 
-  // Filter and combine messages for the active group ONLY
+  // Filter and combine messages for the active group ONLY with proper deduplication
   const allMessages = useMemo(() => {
     if (!activeGroup || !activeGroup.id) {
       console.log("⚠️ No active group selected, returning empty messages");
@@ -37,39 +41,30 @@ const ChatContainer = () => {
     console.log('🔍 Filtering messages for active group:', groupId);
 
     // Get messages from both sources for THIS group only
-    const localGroupMessages = localMessages.filter(msg => {
-      const matches = msg.groupId === groupId;
-      if (matches) {
-        console.log('📋 Local message found:', { 
-          id: msg.id, 
-          content: msg.content, 
-          groupId: msg.groupId,
-          timestamp: msg.timestamp 
-        });
-      }
-      return matches;
-    });
-    
-    const realtimeGroupMessages = realTimeMessages.filter(msg => {
-      const matches = msg.groupId === groupId;
-      if (matches) {
-        console.log('📋 Real-time message found:', { 
-          id: msg.id, 
-          content: msg.content, 
-          groupId: msg.groupId,
-          timestamp: msg.timestamp 
-        });
-      }
-      return matches;
-    });
+    const localGroupMessages = localMessages.filter(msg => msg.groupId === groupId);
+    const realtimeGroupMessages = realTimeMessages.filter(msg => msg.groupId === groupId);
 
     console.log(`📊 Local messages for group ${groupId}:`, localGroupMessages.length);
     console.log(`📊 Real-time messages for group ${groupId}:`, realtimeGroupMessages.length);
 
-    // Combine ALL messages (no Map deduplication for now - let's see everything)
-    const allGroupMessages = [...localGroupMessages, ...realtimeGroupMessages];
+    // The WebSocket hook now handles optimistic message replacement, so we can simply merge
+    // and deduplicate based on message ID
+    const messageMap = new Map();
     
-    console.log('🔍 All raw messages before sorting:', allGroupMessages);
+    // Add local messages first (these include optimistic messages)
+    localGroupMessages.forEach(msg => {
+      messageMap.set(msg.id, msg);
+    });
+    
+    // Add real-time messages, overwriting any duplicates
+    realtimeGroupMessages.forEach(msg => {
+      messageMap.set(msg.id, msg);
+    });
+
+    // Convert map back to array and sort by timestamp
+    const allGroupMessages = Array.from(messageMap.values());
+    
+    console.log('🔍 All deduplicated messages before sorting:', allGroupMessages);
 
     // Sort by timestamp
     const sorted = allGroupMessages.sort(
@@ -77,20 +72,32 @@ const ChatContainer = () => {
     );
 
     console.log(`✅ Total sorted messages for group ${groupId}:`, sorted.length);
-    sorted.forEach((msg, index) => {
-      console.log(`   ${index + 1}. [${msg.id}] "${msg.content}" (${msg.timestamp})`);
-    });
     
     return sorted;
   }, [localMessages, realTimeMessages, activeGroup]);
 
-  // 🐛 DEBUG: Log when messages change
+  // Show notification when new messages arrive
   useEffect(() => {
-    console.log('🐛 DEBUG - allMessages changed:', {
-      total: allMessages.length,
-      messages: allMessages.map(m => ({ id: m.id, content: m.content, groupId: m.groupId }))
+    if (!activeGroup || !user) return;
+
+    const newMessages = webSocketMessages.filter(msg => {
+      // Filter for messages in the current group that are not from the current user
+      return msg.groupId === activeGroup.id && 
+             msg.senderId !== user.userId && 
+             // Only show notification for recent messages (within last 5 seconds)
+             (new Date() - new Date(msg.timestamp)) < 5000;
     });
-  }, [allMessages]);
+
+    // Show notification for each new message
+    newMessages.forEach(msg => {
+      showNotification(
+        `New message from ${msg.senderName || 'User'}`,
+        msg.content.length > 50 
+          ? msg.content.substring(0, 50) + '...' 
+          : msg.content
+      );
+    });
+  }, [webSocketMessages, activeGroup, user, showNotification]);
 
   // Fetch user's groups from API
   useEffect(() => {
@@ -104,19 +111,61 @@ const ChatContainer = () => {
       try {
         console.log('📥 Fetching groups for user:', user.userId);
         const userGroups = await ApiClient.chat.getGroups();
-        console.log('✅ Fetched groups:', userGroups);
+        console.log('✅ Raw groups data from API:', JSON.stringify(userGroups, null, 2));
         
-        const transformedGroups = userGroups.map(group => ({
-          id: group.groupId || group.group_id || group.id,
-          name: group.groupName || group.group_name || `Group ${group.groupId || group.group_id || group.id}`,
-          description: group.description || 'No description',
-          memberCount: group.memberCount || group.member_count || 1,
-          isOnline: true,
-          createdBy: group.createdBy || group.created_by,
-          isDirect: group.isDirect || group.is_direct || false
-        }));
+        // Filter out groups with 2 or fewer members (only show groups with 3 or more members)
+        const groupChats = userGroups.filter(group => {
+          // Only check member count, ignore isDirect flag
+          const memberCount = group.memberCount || group.member_count || 0;
+          // Explicitly exclude groups with 2 or fewer members
+          const shouldInclude = memberCount > 2;
+          console.log(`🔍 Group Filter - Name: ${group.groupName || group.name || 'Unknown'}, ID: ${group.groupId || group.id}, memberCount: ${memberCount}, shouldInclude: ${shouldInclude}`);
+          return shouldInclude;
+        });
+        
+        console.log('✅ Groups that passed filter (>2 members):', JSON.stringify(groupChats, null, 2));
+        
+        const transformedGroups = groupChats.map(group => {
+          const groupId = group.groupId || group.group_id || group.id;
+          const groupName = group.groupName || group.group_name || group.name || `Group ${groupId}`;
+          // Use the memberCount directly since it should already be >= 3
+          const memberCount = group.memberCount;
+          
+          console.log(`🔄 Transforming group: ${groupName}, memberCount: ${memberCount}`);
+          
+          return {
+            id: groupId,
+            name: groupName,
+            description: group.description || 'No description',
+            memberCount: memberCount,
+            isOnline: false, // Will be updated when group members are loaded
+            createdBy: group.createdBy || group.created_by,
+            isDirect: group.isDirect || group.is_direct || false
+          };
+        });
+        
+        console.log('✅ Final transformed groups to display:', JSON.stringify(transformedGroups, null, 2));
         
         setGroups(transformedGroups);
+        
+        // If there's a group ID in the navigation state, select it
+        if (location.state?.groupId) {
+          const groupToSelect = transformedGroups.find(g => g.id === location.state.groupId);
+          if (groupToSelect) {
+            console.log('🎯 Auto-selecting group from navigation state:', groupToSelect);
+            handleGroupSelect(groupToSelect);
+          }
+          // Clear the state so it doesn't persist on refresh
+          window.history.replaceState({}, document.title, location.pathname);
+        }
+        
+        // If createGroup is in the navigation state, open the modal
+        if (location.state?.createGroup) {
+          console.log('🎯 Opening group creation modal from navigation state');
+          setIsCreateModalOpen(true);
+          // Clear the state so it doesn't persist on refresh
+          window.history.replaceState({}, document.title, location.pathname);
+        }
       } catch (error) {
         console.error('❌ Error fetching groups:', error);
       } finally {
@@ -127,27 +176,164 @@ const ChatContainer = () => {
     fetchUserGroups();
   }, [token, user?.userId]);
 
+  // Fetch group members when active group changes
+  useEffect(() => {
+    const fetchGroupMembers = async () => {
+      if (!activeGroup || !activeGroup.id || !token) {
+        setGroupMembers([]);
+        return;
+      }
+
+      try {
+        console.log('📥 Fetching members for group:', activeGroup.id);
+        const membersData = await ApiClient.chat.getGroupMembers(activeGroup.id);
+        console.log('✅ Fetched group members:', membersData);
+        
+        // Fetch user details for each member and include online status
+        const memberDetails = [];
+        
+        // Handle both old and new API response formats
+        const membersList = membersData.members || 
+                           (membersData.member_ids ? 
+                             membersData.member_ids.map(id => ({ user_id: id })) : 
+                             []);
+        
+        for (const member of membersList) {
+          const memberId = member.user_id || member;
+          try {
+            const userDetails = await ApiClient.users.getProfile(memberId);
+            memberDetails.push({
+              userId: memberId,
+              name: userDetails.username || `User ${memberId}`,
+              username: userDetails.username || `user${memberId}`,
+              email: userDetails.email || '',
+              // Use online status from API response if available, otherwise default to offline
+              status: member.online_status !== undefined ? 
+                     (member.online_status ? 'online' : 'offline') : 
+                     'offline'
+            });
+          } catch (error) {
+            console.warn(`❌ Could not fetch details for user ${memberId}:`, error);
+            memberDetails.push({
+              userId: memberId,
+              name: `User ${memberId}`,
+              username: `user${memberId}`,
+              email: '',
+              status: member.online_status !== undefined ? 
+                     (member.online_status ? 'online' : 'offline') : 
+                     'offline'
+            });
+          }
+        }
+        
+        setGroupMembers(memberDetails);
+      } catch (error) {
+        console.error('❌ Error fetching group members:', error);
+        setGroupMembers([]);
+      }
+    };
+
+    fetchGroupMembers();
+  }, [activeGroup, token]);
+
   // Transform WebSocket online users
   useEffect(() => {
-    if (realTimeOnlineUsers.length === 0) return;
+    console.log('📡 Raw WebSocket online users:', realTimeOnlineUsers);
+    
+    if (realTimeOnlineUsers.length === 0) {
+      console.log('📭 No online users from WebSocket');
+      setOnlineUsers([]);
+      return;
+    }
 
-    const transformedUsers = realTimeOnlineUsers.map(wsUser => ({
-      userId: wsUser.userId || wsUser.user_id || wsUser.id,
-      name: wsUser.name || wsUser.user_name || wsUser.userName || `User ${wsUser.userId || wsUser.user_id || wsUser.id}`,
-      username: wsUser.username || `user${wsUser.userId || wsUser.user_id || wsUser.id}`,
-      status: wsUser.status || (wsUser.online ? 'online' : 'offline'),
-      role: 'member',
-      isTyping: wsUser.isTyping || false,
-      email: wsUser.email || ''
-    }));
+    const transformedUsers = realTimeOnlineUsers.map(wsUser => {
+      const transformed = {
+        userId: wsUser.userId || wsUser.user_id || wsUser.id,
+        name: wsUser.name || wsUser.user_name || wsUser.userName || `User ${wsUser.userId || wsUser.user_id || wsUser.id}`,
+        username: wsUser.username || `user${wsUser.userId || wsUser.user_id || wsUser.id}`,
+        status: wsUser.status || (wsUser.online ? 'online' : 'offline'),
+        role: 'member',
+        isTyping: wsUser.isTyping || false,
+        email: wsUser.email || ''
+      };
+      console.log('🔄 Transformed WebSocket user:', transformed);
+      return transformed;
+    });
 
     const uniqueUsers = transformedUsers.filter(
       (user, index, self) => index === self.findIndex(u => u.userId === user.userId)
     );
 
-    console.log('👥 Transformed online users:', uniqueUsers.length);
+    console.log('👥 Final transformed online users:', uniqueUsers);
     setOnlineUsers(uniqueUsers);
   }, [realTimeOnlineUsers]);
+
+  // Update group members with online status from WebSocket
+  useEffect(() => {
+    console.log('📡 Online users updated:', onlineUsers);
+    console.log('👥 Current group members:', groupMembers);
+    
+    // Create a map of online users for quick lookup
+    const onlineUserMap = {};
+    onlineUsers.forEach(user => {
+      onlineUserMap[Number(user.userId)] = user;
+    });
+    
+    setGroupMembers(prevMembers => {
+      const updated = prevMembers.map(member => {
+        const userId = Number(member.userId);
+        const onlineUser = onlineUserMap[userId];
+        
+        if (onlineUser) {
+          const updatedMember = {
+            ...member,
+            status: onlineUser.status || 'online'
+          };
+          console.log(`🔄 Updated member ${userId} status to:`, updatedMember.status);
+          return updatedMember;
+        }
+        
+        // If not found in online users, set to offline
+        const updatedMember = {
+          ...member,
+          status: 'offline'
+        };
+        console.log(`🔄 Set member ${userId} status to offline (not online)`);
+        return updatedMember;
+      });
+      
+      console.log('🔄 Updated group members with online status:', updated);
+      return updated;
+    });
+  }, [onlineUsers]); // Removed groupMembers from dependencies to prevent infinite loop
+
+  // Update groups with online status information
+  useEffect(() => {
+    // Update all groups with online status information whenever group members change
+    if (groupMembers.length === 0 || groups.length === 0) return;
+    
+    // Create a map of online users for quick lookup
+    const onlineUserIds = new Set(
+      groupMembers
+        .filter(member => member.status === 'online' && member.userId !== user?.userId)
+        .map(member => Number(member.userId))
+    );
+    
+    setGroups(prevGroups => {
+      return prevGroups.map(group => {
+        // For each group, check if any of its members are online
+        // Since we don't have direct group membership data here, we'll use a heuristic:
+        // If there are any online users, show online status for all groups
+        // In a more advanced implementation, we would fetch actual group membership
+        const hasOnlineMembers = onlineUserIds.size > 0;
+        
+        return {
+          ...group,
+          isOnline: hasOnlineMembers
+        };
+      });
+    });
+  }, [groupMembers, groups, user?.userId]);
 
   // Load messages for a group (only once per group)
   const loadGroupMessages = useCallback(async (groupId) => {
@@ -168,18 +354,12 @@ const ChatContainer = () => {
       const messageHistory = await ApiClient.chat.getGroupMessages(groupId);
       console.log('✅ Fetched message history:', messageHistory);
       
-      // 🚨 DEBUG: Log the exact structure to see field names
-      console.log('🔍 Full API response structure:', JSON.stringify(messageHistory, null, 2));
-      
-      // 🚨 FIX: Handle different response structures
       let messagesArray = [];
       
       if (Array.isArray(messageHistory)) {
-        // If response is directly an array
         messagesArray = messageHistory;
         console.log('📦 Response is direct array');
       } else if (messageHistory && Array.isArray(messageHistory.messages)) {
-        // If response has messages property
         messagesArray = messageHistory.messages;
         console.log('📦 Response has messages property');
       } else if (messageHistory && messageHistory.content) {
@@ -193,27 +373,7 @@ const ChatContainer = () => {
 
       console.log('✅ Raw messages array length:', messagesArray.length);
 
-      // Mark as loaded
-      setLoadedGroups(prev => new Set([...prev, groupId]));
-
-      if (messagesArray.length === 0) {
-        console.log('ℹ️ No message history for group:', groupId);
-        return;
-      }
-
-      // Log first raw message to see exact field names
-      console.log('🔍 First raw message from API:', messagesArray[0]);
-      console.log('🔍 All field names in first message:', Object.keys(messagesArray[0]));
-
       const transformedMessages = messagesArray.map((msg, index) => {
-        // 🚨 FIX: Use the exact field names from your backend
-        // Common field name variations in Java Spring Boot:
-        // - messageId / message_id / id
-        // - content / message
-        // - senderId / sender_id / userId
-        // - senderName / sender_name / username / userName
-        // - createdAt / created_at / timestamp
-        
         const transformed = {
           id: msg.messageId || msg.message_id || msg.id || `hist-${groupId}-${index}`,
           content: msg.content || msg.message || '',
@@ -234,7 +394,6 @@ const ChatContainer = () => {
 
       // Add to local messages
       setLocalMessages(prev => {
-        // Remove any existing messages for this group to avoid duplicates
         const filtered = prev.filter(msg => msg.groupId !== groupId);
         const updated = [...filtered, ...transformedMessages];
         console.log(`💾 Updated localMessages: ${prev.length} → ${updated.length}`);
@@ -242,10 +401,11 @@ const ChatContainer = () => {
         return updated;
       });
 
+      // Mark this group as loaded
+      setLoadedGroups(prev => new Set([...prev, groupId]));
+
     } catch (error) {
       console.error('❌ Error fetching group messages:', error);
-      // Mark as loaded to prevent infinite retry
-      setLoadedGroups(prev => new Set([...prev, groupId]));
     } finally {
       setLoading(false);
     }
@@ -302,14 +462,23 @@ const ChatContainer = () => {
   };
 
   const handleCreateGroup = () => {
-    console.log('➕ Create group button clicked!');
+    console.log('🎯 handleCreateGroup called - Function is working!');
+    console.log('Current isCreateModalOpen state:', isCreateModalOpen);
     setIsCreateModalOpen(true);
+    console.log('Set isCreateModalOpen to true');
   };
 
-  const handleGroupCreated = (newGroup) => {
+  const handleGroupCreated = async (newGroup) => {
     console.log('✅ New group created:', newGroup);
+    
+    // Add the new group to the list
     setGroups(prev => [...prev, newGroup]);
+    
+    // Select the new group
     handleGroupSelect(newGroup);
+    
+    // Close the modal
+    setIsCreateModalOpen(false);
   };
 
   // Cleanup when component unmounts
@@ -321,18 +490,21 @@ const ChatContainer = () => {
     };
   }, []);
 
-  // Debug: Log state changes
-  useEffect(() => {
-    console.log('🔄 State updated - localMessages count:', localMessages.length);
-  }, [localMessages]);
-
-  useEffect(() => {
-    console.log('🔄 State updated - realTimeMessages count:', realTimeMessages.length);
-  }, [realTimeMessages]);
+  console.log('ChatContainer state:', {
+    activeGroup: activeGroup?.id,
+    showGroupSidebar,
+    showUserSidebar,
+    groups: groups?.length,
+    isCreateModalOpen,
+    isConnected
+  });
 
   return (
-    <div className="flex h-full theme-bg">
-      <div className={`transition-all duration-300 ${showGroupSidebar ? 'w-80' : 'w-0'} overflow-hidden border-r-2 theme-border`}>
+    <div className="flex h-screen theme-bg flex-col sm:flex-row">
+      {/* Group Sidebar - Hidden by default on mobile */}
+      <div 
+        className={`transition-all duration-300 ${showGroupSidebar ? 'w-full sm:w-80 absolute sm:relative z-20 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 absolute sm:relative'} overflow-hidden border-r theme-border sm:block`}
+      >
         {showGroupSidebar && (
           <GroupSidebar
             groups={groups}
@@ -346,8 +518,9 @@ const ChatContainer = () => {
         )}
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center gap-2 p-2 border-b-2 theme-border md:hidden">
+      <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900 dark:to-indigo-900">
+        {/* Mobile header with toggle buttons */}
+        <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
           <button
             onClick={() => setShowGroupSidebar(!showGroupSidebar)}
             className="p-2 rounded-lg theme-text hover-scale"
@@ -362,6 +535,11 @@ const ChatContainer = () => {
           >
             👥
           </button>
+          <div className="flex-1 text-center">
+            <h3 className="font-medium theme-text truncate">
+              {activeGroup ? activeGroup.name : 'Select a group'}
+            </h3>
+          </div>
         </div>
 
         <ChatHeader 
@@ -391,13 +569,15 @@ const ChatContainer = () => {
           }
           isDarkMode={isDarkMode}
           colors={colors}
+          activeGroupId={activeGroup?.id}
         />
       </div>
 
-      <div className={`transition-all duration-300 ${showUserSidebar ? 'w-64' : 'w-0'} overflow-hidden border-l-2 theme-border`}>
+      {/* User Sidebar - Hidden by default on mobile */}
+      <div className={`transition-all duration-300 ${showUserSidebar ? 'w-full sm:w-64 absolute sm:relative z-20 sm:z-auto inset-0 sm:inset-auto theme-surface mt-16 sm:mt-0' : 'w-0 absolute sm:relative'} overflow-hidden border-l theme-border sm:block`}>
         {showUserSidebar && activeGroup && (
           <UserSidebar
-            users={onlineUsers}
+            users={groupMembers}
             currentUserId={user?.userId}
             isDarkMode={isDarkMode}
             colors={colors}
@@ -410,9 +590,9 @@ const ChatContainer = () => {
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
           onGroupCreated={handleGroupCreated}
+          currentUserId={user?.userId}
           isDarkMode={isDarkMode}
           colors={colors}
-          currentUserId={user?.userId}
         />
       )}
     </div>

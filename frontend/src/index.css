@@ -198,6 +198,79 @@ html, body {
   }
 }
 
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 640px) {
+  /* Removed circular dependencies by not redefining Tailwind classes */
+  
+  .rounded-2xl {
+    @apply rounded-xl;
+  }
+  
+  .rounded-xl {
+    @apply rounded-lg;
+  }
+  
+  .p-8 {
+    @apply p-6;
+  }
+  
+  .p-10 {
+    @apply p-6;
+  }
+  
+  .py-10 {
+    @apply py-6;
+  }
+  
+  .px-8 {
+    @apply px-6;
+  }
+  
+  .text-3xl {
+    @apply text-2xl;
+  }
+  
+  .text-2xl {
+    @apply text-xl;
+  }
+  
+  .text-lg {
+    @apply text-base;
+  }
+  
+  .text-sm {
+    @apply text-xs;
+  }
+  
+  .space-y-6 {
+    @apply space-y-4;
+  }
+  
+  .space-y-5 {
+    @apply space-y-3;
+  }
+  
+  /* Hide scrollbar on mobile for better appearance */
+  .overflow-y-auto {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .overflow-y-auto::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   :root {
