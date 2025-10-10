@@ -20,6 +20,8 @@ import org.springframework.data.domain.Pageable;
 
 import jakarta.transaction.Transactional;
 import java.util.*;
+import java.time.format.DateTimeFormatter;
+import java.time.ZoneOffset;
 
 @Service
 public class ChatService {
@@ -49,9 +51,16 @@ public class ChatService {
      */
     @Transactional
     public void handleIncomingMessage(Map<String, Object> payload, Map<Long, WebSocketSession> onlineUsers) throws Exception {
+        // Validate payload
+        if (payload == null || payload.get("sender_id") == null || payload.get("group_id") == null) {
+            System.out.println("Invalid payload: " + payload);
+            return;
+        }
+        
         Long senderId = Long.valueOf(payload.get("sender_id").toString());
-        Long groupId = payload.get("group_id") != null ? Long.valueOf(payload.get("group_id").toString()) : null;
+        Long groupId = Long.valueOf(payload.get("group_id").toString());
         String content = payload.get("content") != null ? payload.get("content").toString() : null;
+        String messageType = payload.get("type") != null ? payload.get("type").toString() : "message";
 
         if (groupId == null) return;
 
@@ -87,6 +96,60 @@ public class ChatService {
             // Deliver if online
             if (delivered) {
                 Map<String, Object> dto = buildMessagePayload(msg, true);
+                // Add message type to payload
+                dto.put("type", messageType);
+                WebSocketSession ws = onlineUsers.get(recipientId);
+                ws.sendMessage(new TextMessage(mapper.writeValueAsString(dto)));
+            }
+        }
+    }
+
+    /**
+     * Handle incoming file message
+     * Payload:
+     * { type: "file", sender_id, group_id, file_name, file_size, file_type }
+     */
+    @Transactional
+    public void handleIncomingFileMessage(Map<String, Object> payload, Map<Long, WebSocketSession> onlineUsers) throws Exception {
+        // Validate payload
+        if (payload == null || payload.get("sender_id") == null || payload.get("group_id") == null) {
+            System.out.println("Invalid file payload: " + payload);
+            return;
+        }
+        
+        Long senderId = Long.valueOf(payload.get("sender_id").toString());
+        Long groupId = Long.valueOf(payload.get("group_id").toString());
+        String fileName = payload.get("file_name") != null ? payload.get("file_name").toString() : null;
+        Long fileSize = payload.get("file_size") != null ? Long.valueOf(payload.get("file_size").toString()) : null;
+        String fileType = payload.get("file_type") != null ? payload.get("file_type").toString() : null;
+
+        if (groupId == null) return;
+
+        // Build message with file info
+        Message msg = new Message();
+        msg.setSenderId(senderId);
+        msg.setGroupId(groupId);
+        msg.setContent("[File] " + fileName);
+
+        // Save message
+        messageRepository.save(msg);
+
+        // Fetch group members
+        List<GroupMember> members = groupMemberRepository.findByGroupId(groupId);
+
+        for (GroupMember gm : members) {
+            if (gm.getUserId().equals(senderId)) continue;
+
+            Long recipientId = gm.getUserId();
+            MessageDelivery delivery = new MessageDelivery(msg, userRepository.findById(recipientId).orElseThrow());
+
+            boolean delivered = onlineUsers.containsKey(recipientId) && onlineUsers.get(recipientId).isOpen();
+            delivery.setDelivered(delivered);
+            messageDeliveryRepository.save(delivery);
+
+            // Deliver if online
+            if (delivered) {
+                Map<String, Object> dto = buildFileMessagePayload(msg, fileName, fileSize, fileType, true);
                 WebSocketSession ws = onlineUsers.get(recipientId);
                 ws.sendMessage(new TextMessage(mapper.writeValueAsString(dto)));
             }
@@ -134,8 +197,10 @@ public class ChatService {
         msgResponse.put("sender_id", m.getSenderId());
         msgResponse.put("group_id", m.getGroupId());
         msgResponse.put("content", m.getContent());
-        msgResponse.put("created_at", m.getCreatedAt());
+        // Format timestamp consistently as ISO string
+        msgResponse.put("created_at", m.getCreatedAt().atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT));
         msgResponse.put("delivered", delivered);
+        msgResponse.put("type", "message");
 
         if (m.getMediaMessage() != null) {
             MediaMessage media = m.getMediaMessage();
@@ -145,9 +210,28 @@ public class ChatService {
             mediaInfo.put("file_type", media.getFileType());
             mediaInfo.put("file_size", media.getFileSize());
             mediaInfo.put("file_path", media.getFilePath());
-            mediaInfo.put("uploaded_at", media.getUploadedAt());
+            // Format timestamp consistently as ISO string
+            mediaInfo.put("uploaded_at", media.getUploadedAt().toString());
             msgResponse.put("media", mediaInfo);
         }
+
+        return msgResponse;
+    }
+
+    // Build payload for file messages
+    public Map<String, Object> buildFileMessagePayload(Message m, String fileName, Long fileSize, String fileType, boolean delivered) {
+        Map<String, Object> msgResponse = new HashMap<>();
+        msgResponse.put("message_id", m.getMessageId());
+        msgResponse.put("sender_id", m.getSenderId());
+        msgResponse.put("group_id", m.getGroupId());
+        msgResponse.put("content", m.getContent());
+        // Format timestamp consistently as ISO string
+        msgResponse.put("created_at", m.getCreatedAt().atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT));
+        msgResponse.put("delivered", delivered);
+        msgResponse.put("type", "file");
+        msgResponse.put("file_name", fileName);
+        msgResponse.put("file_size", fileSize);
+        msgResponse.put("file_type", fileType);
 
         return msgResponse;
     }

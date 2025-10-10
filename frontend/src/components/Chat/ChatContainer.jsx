@@ -189,39 +189,29 @@ const ChatContainer = () => {
         const membersData = await ApiClient.chat.getGroupMembers(activeGroup.id);
         console.log('✅ Fetched group members:', membersData);
         
-        // Fetch user details for each member and include online status
+        const members = membersData?.members || [];
+
+        // Fetch user details for each member
         const memberDetails = [];
-        
-        // Handle both old and new API response formats
-        const membersList = membersData.members || 
-                           (membersData.member_ids ? 
-                             membersData.member_ids.map(id => ({ user_id: id })) : 
-                             []);
-        
-        for (const member of membersList) {
-          const memberId = member.user_id || member;
+        for (const member of members) {
           try {
+            const memberId = member.user_id;
             const userDetails = await ApiClient.users.getProfile(memberId);
             memberDetails.push({
               userId: memberId,
               name: userDetails.username || `User ${memberId}`,
               username: userDetails.username || `user${memberId}`,
               email: userDetails.email || '',
-              // Use online status from API response if available, otherwise default to offline
-              status: member.online_status !== undefined ? 
-                     (member.online_status ? 'online' : 'offline') : 
-                     'offline'
+              status: 'offline' // Default to offline, will be updated by WebSocket
             });
           } catch (error) {
-            console.warn(`❌ Could not fetch details for user ${memberId}:`, error);
+            console.warn(`❌ Could not fetch details for user ${member.user_id}:`, error);
             memberDetails.push({
-              userId: memberId,
-              name: `User ${memberId}`,
-              username: `user${memberId}`,
+              userId: member.user_id,
+              name: `User ${member.user_id}`,
+              username: `user${member.user_id}`,
               email: '',
-              status: member.online_status !== undefined ? 
-                     (member.online_status ? 'online' : 'offline') : 
-                     'offline'
+              status: 'offline'
             });
           }
         }
@@ -305,35 +295,26 @@ const ChatContainer = () => {
       console.log('🔄 Updated group members with online status:', updated);
       return updated;
     });
-  }, [onlineUsers]); // Removed groupMembers from dependencies to prevent infinite loop
+  }, [onlineUsers]);
 
   // Update groups with online status information
   useEffect(() => {
-    // Update all groups with online status information whenever group members change
-    if (groupMembers.length === 0 || groups.length === 0) return;
+    if (groupMembers.length === 0) return;
     
-    // Create a map of online users for quick lookup
     const onlineUserIds = new Set(
       groupMembers
         .filter(member => member.status === 'online' && member.userId !== user?.userId)
         .map(member => Number(member.userId))
     );
-    
+
     setGroups(prevGroups => {
-      return prevGroups.map(group => {
-        // For each group, check if any of its members are online
-        // Since we don't have direct group membership data here, we'll use a heuristic:
-        // If there are any online users, show online status for all groups
-        // In a more advanced implementation, we would fetch actual group membership
-        const hasOnlineMembers = onlineUserIds.size > 0;
-        
-        return {
-          ...group,
-          isOnline: hasOnlineMembers
-        };
-      });
+      return prevGroups.map(group => ({
+        ...group,
+        isOnline: onlineUserIds.size > 0,
+      }));
     });
-  }, [groupMembers, groups, user?.userId]);
+  }, [groupMembers, user?.userId, onlineUsers]);
+
 
   // Load messages for a group (only once per group)
   const loadGroupMessages = useCallback(async (groupId) => {
