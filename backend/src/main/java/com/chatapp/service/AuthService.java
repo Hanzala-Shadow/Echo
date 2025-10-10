@@ -31,7 +31,10 @@ public class AuthService {
     // REGISTER
     // ======================
     public User register(String username, String email, String password) {
+        System.out.println("AuthService: Registering user with email: " + email);
+        
         if (userRepository.existsByEmail(email)) {
+            System.out.println("AuthService: Email already in use: " + email);
             throw new RuntimeException("Email already in use");
         }
 
@@ -39,7 +42,12 @@ public class AuthService {
         user.setUsername(username);
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(password));
-        return userRepository.save(user);
+        
+        System.out.println("AuthService: Saving user: " + email);
+        User savedUser = userRepository.save(user);
+        System.out.println("AuthService: User saved successfully with ID: " + savedUser.getUserId());
+        
+        return savedUser;
     }
 
     // ======================
