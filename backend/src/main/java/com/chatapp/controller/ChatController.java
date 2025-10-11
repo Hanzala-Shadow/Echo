@@ -4,25 +4,17 @@ import com.chatapp.dto.MessageDTO;
 import com.chatapp.model.Group;
 import com.chatapp.model.GroupMember;
 import com.chatapp.model.Message;
-import com.chatapp.model.MediaMessage;
 import com.chatapp.model.User;
 import com.chatapp.repository.GroupMemberRepository;
 import com.chatapp.repository.GroupRepository;
 import com.chatapp.repository.MessageRepository;
-import com.chatapp.repository.MediaMessageRepository;
 import com.chatapp.repository.UserRepository;
 import com.chatapp.service.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,9 +36,6 @@ public class ChatController {
 
     @Autowired
     private MessageRepository messageRepository;
-
-    @Autowired
-    private MediaMessageRepository mediaMessageRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -84,54 +73,6 @@ public class ChatController {
         } catch (Exception e) {
             e.printStackTrace();
             return errorResponse("Unauthorized or invalid token", 401);
-        }
-    }
-
-    // -----------------------------
-    // Upload Media (REST)
-    // -----------------------------
-    @PostMapping("/groups/{groupId}/media")
-    public ResponseEntity<?> uploadMedia(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long groupId,
-            @RequestParam("file") MultipartFile file
-    ) {
-        try {
-            Long userId = extractUserIdFromHeader(authHeader);
-
-            boolean member = groupMemberRepository.existsByGroupIdAndUserId(groupId, userId);
-            if (!member) {
-                return errorResponse("User not in group", 403);
-            }
-
-            // Save file locally (for LAN prototype)
-            String uploadDir = "uploads/";
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-            Path filePath = Paths.get(uploadDir, fileName);
-            Files.write(filePath, file.getBytes());
-
-            // Save media record in DB
-            MediaMessage media = new MediaMessage();
-            media.setFileName(file.getOriginalFilename());
-            media.setFileType(file.getContentType());
-            media.setFileSize(file.getSize());
-            media.setFilePath(filePath.toString());
-            media.setUploadedAt(Instant.now());
-            mediaMessageRepository.save(media);
-
-            return ResponseEntity.ok(Map.of(
-                    "media_id", media.getMediaId(),
-                    "file_name", media.getFileName(),
-                    "file_type", media.getFileType(),
-                    "file_size", media.getFileSize(),
-                    "file_path", media.getFilePath()
-            ));
-
-        } catch (Exception e) {
-            return errorResponse("Upload failed: " + e.getMessage(), 500);
         }
     }
 
