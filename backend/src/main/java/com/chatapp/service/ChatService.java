@@ -1,5 +1,6 @@
 package com.chatapp.service;
 
+import com.chatapp.model.User;
 import com.chatapp.model.GroupMember;
 import com.chatapp.model.Message;
 import com.chatapp.model.MessageDelivery;
@@ -202,6 +203,12 @@ public class ChatService {
         msgResponse.put("delivered", delivered);
         msgResponse.put("type", "message");
 
+        String senderName=userRepository.findById(m.getSenderId())      
+                .map(user->user.getUsername())
+                .orElse("Unknown");
+
+        msgResponse.put("sender_name",senderName);
+        
         if (m.getMediaMessage() != null) {
             MediaMessage media = m.getMediaMessage();
             Map<String, Object> mediaInfo = new HashMap<>();
