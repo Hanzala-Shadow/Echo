@@ -6,6 +6,7 @@ import java.util.Map;
 public class MessageDTO {
     private Long messageId;
     private Long senderId;
+    private String senderName;
     private Long groupId;
     private String content;
     private LocalDateTime createdAt;
@@ -18,10 +19,12 @@ public class MessageDTO {
     // --- Constructors ---
     public MessageDTO() {}
 
-    public MessageDTO(Long messageId, Long senderId, Long groupId, String content,
-                      LocalDateTime createdAt, Map<String, Object> media, boolean delivered) {
+    public MessageDTO(Long messageId, Long senderId, String senderName, Long groupId,
+                      String content, LocalDateTime createdAt,
+                      Map<String, Object> media, boolean delivered) {
         this.messageId = messageId;
         this.senderId = senderId;
+        this.senderName = senderName;
         this.groupId = groupId;
         this.content = content;
         this.createdAt = createdAt;
@@ -35,6 +38,9 @@ public class MessageDTO {
 
     public Long getSenderId() { return senderId; }
     public void setSenderId(Long senderId) { this.senderId = senderId; }
+
+    public String getSenderName() { return senderName; }
+    public void setSenderName(String senderName) { this.senderName = senderName; }
 
     public Long getGroupId() { return groupId; }
     public void setGroupId(Long groupId) { this.groupId = groupId; }

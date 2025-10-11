@@ -346,9 +346,6 @@ public class ChatWebSocketHandler implements WebSocketHandler {
             return;
         }
         
-        // Reassemble file and save (simplified for this example)
-        // In a real implementation, you would save the file to disk or database
-        
         // Broadcast file end to group members
         Map<String, Object> broadcastPayload = new HashMap<>();
         broadcastPayload.put("type", "file_end");

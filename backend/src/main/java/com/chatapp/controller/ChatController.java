@@ -413,25 +413,33 @@ public class ChatController {
     }
 
     private MessageDTO toDTO(Message m) {
-        Map<String, Object> media = null;
-        if (m.getMediaMessage() != null) {
-            media = Map.of(
-                    "media_id", m.getMediaMessage().getMediaId(),
-                    "file_name", m.getMediaMessage().getFileName(),
-                    "file_type", m.getMediaMessage().getFileType(),
-                    "file_size", m.getMediaMessage().getFileSize(),
-                    "file_path", m.getMediaMessage().getFilePath(),
-                    "uploaded_at", m.getMediaMessage().getUploadedAt()
-            );
-        }
-        return new MessageDTO(
-                m.getMessageId(),
-                m.getSenderId(),
-                m.getGroupId(),
-                m.getContent(),
-                m.getCreatedAt(),
-                media,
-                true
+    Map<String, Object> media = null;
+    if (m.getMediaMessage() != null) {
+        media = Map.of(
+                "media_id", m.getMediaMessage().getMediaId(),
+                "file_name", m.getMediaMessage().getFileName(),
+                "file_type", m.getMediaMessage().getFileType(),
+                "file_size", m.getMediaMessage().getFileSize(),
+                "file_path", m.getMediaMessage().getFilePath(),
+                "uploaded_at", m.getMediaMessage().getUploadedAt()
         );
     }
+
+    //  Fetch sender name from UserRepository
+    String senderName = userRepository.findById(m.getSenderId())
+            .map(User::getUsername)
+            .orElse("Unknown");
+
+    return new MessageDTO(
+            m.getMessageId(),
+            m.getSenderId(),
+            senderName,
+            m.getGroupId(),
+            m.getContent(),
+            m.getCreatedAt(),
+            media,
+            true
+    );
+}
+
 }
