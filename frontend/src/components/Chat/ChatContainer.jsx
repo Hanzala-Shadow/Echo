@@ -9,11 +9,12 @@ import GroupSidebar from './GroupSidebar';
 import UserSidebar from './UserSidebar';
 import ChatHeader from './ChatHeader';
 import GroupCreateModal from './Groups/GroupCreateModal';
+import useRealTimeUserStatus from '../../hooks/useRealTimeUserStatus';
 
 const ChatContainer = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, isWebSocketConnected, webSocketMessages, onlineUsers: realTimeOnlineUsers, sendWebSocketMessage, joinGroup, leaveGroup, showNotification } = useAuth();
+  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [activeGroup, setActiveGroup] = useState(null);
   const [showGroupSidebar, setShowGroupSidebar] = useState(true);
@@ -21,10 +22,92 @@ const ChatContainer = () => {
   const [groups, setGroups] = useState([]);
   const [localMessages, setLocalMessages] = useState([]);
   const [loadedGroups, setLoadedGroups] = useState(new Set());
-  const [onlineUsers, setOnlineUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [groupMembers, setGroupMembers] = useState([]); // Track members of active group
+
+  // ADDED THIS - Get group member usernames for the hook
+  const groupMemberUsernames = useMemo(() => 
+    groupMembers.map(member => member.username).filter(Boolean), 
+    [groupMembers]
+  );
+
+  // ADDED THIS - Use the optimized real-time status hook
+  const { getUserStatus } = useRealTimeUserStatus(groupMemberUsernames);
+
+  // ADDED THIS - Update group members with optimized status(WITH DEBOUNCE)
+  useEffect(() => {
+    if (groupMembers.length === 0) return;
+
+    console.log('🔄 Updating group members with optimized online status');
+    
+    setGroupMembers(prevMembers => {
+      let hasChanges = false;
+      const updatedMembers = prevMembers.map(member => {
+        // 🆕 SPECIAL HANDLING FOR CURRENT USER - Always mark as online
+        if (member.userId === user?.userId) {
+          if (member.status !== 'online') {
+            console.log(`🔄 Current user ${member.username} is always online`);
+            hasChanges = true;
+            return {
+              ...member,
+              status: 'online'
+            };
+          }
+          return member;
+        }
+        
+        // For other users, use the real-time status
+        const { isOnline } = getUserStatus(member.username);
+        const newStatus = isOnline ? 'online' : 'offline';
+        
+        // Only update if status changed
+        if (member.status !== newStatus) {
+          console.log(`🔄 Updated ${member.username} status: ${member.status} → ${newStatus}`);
+          hasChanges = true;
+          return {
+            ...member,
+            status: newStatus
+          };
+        }
+        return member;
+      });
+      
+      // Only return new array if there were actual changes
+      return hasChanges ? updatedMembers : prevMembers;
+    });
+  }, [groupMembers, getUserStatus, user?.userId]); // Add user?.userId to dependencies
+
+  // ADDED THIS - Update groups list with online status (WITH DEBOUNCE)
+  useEffect(() => {
+    if (groupMembers.length === 0) return;
+    
+    const onlineCount = groupMembers.filter(member => 
+      member.status === 'online'
+    ).length;
+
+    setGroups(prevGroups => {
+      // Check if online status actually changed for any group
+      const needsUpdate = prevGroups.some(group => 
+        group.isOnline !== (onlineCount > 0)
+      );
+      
+      return needsUpdate ? prevGroups.map(group => ({
+        ...group,
+        isOnline: onlineCount > 0,
+        onlineCount: onlineCount
+      })) : prevGroups;
+    });
+  }, [groupMembers, user?.userId]);
+
+  // Debug effect to track the loop
+  useEffect(() => {
+    console.log('🔍 DEBUG: Group members updated', {
+      count: groupMembers.length,
+      members: groupMembers.map(m => ({ username: m.username, status: m.status })),
+      onlineCount: groupMembers.filter(m => m.status === 'online').length
+    });
+  }, [groupMembers]);
 
   const realTimeMessages = webSocketMessages;
   const isConnected = isWebSocketConnected;
@@ -202,7 +285,7 @@ const ChatContainer = () => {
               name: userDetails.username || `User ${memberId}`,
               username: userDetails.username || `user${memberId}`,
               email: userDetails.email || '',
-              status: 'offline' // Default to offline, will be updated by WebSocket
+              status: memberId === user?.userId ? 'online' : 'offline' // 🆕 Current user starts as online
             });
           } catch (error) {
             console.warn(`❌ Could not fetch details for user ${member.user_id}:`, error);
@@ -226,95 +309,7 @@ const ChatContainer = () => {
     fetchGroupMembers();
   }, [activeGroup, token]);
 
-  // Transform WebSocket online users
-  useEffect(() => {
-    console.log('📡 Raw WebSocket online users:', realTimeOnlineUsers);
-    
-    if (realTimeOnlineUsers.length === 0) {
-      console.log('📭 No online users from WebSocket');
-      setOnlineUsers([]);
-      return;
-    }
-
-    const transformedUsers = realTimeOnlineUsers.map(wsUser => {
-      const transformed = {
-        userId: wsUser.userId || wsUser.user_id || wsUser.id,
-        name: wsUser.name || wsUser.user_name || wsUser.userName || `User ${wsUser.userId || wsUser.user_id || wsUser.id}`,
-        username: wsUser.username || `user${wsUser.userId || wsUser.user_id || wsUser.id}`,
-        status: wsUser.status || (wsUser.online ? 'online' : 'offline'),
-        role: 'member',
-        isTyping: wsUser.isTyping || false,
-        email: wsUser.email || ''
-      };
-      console.log('🔄 Transformed WebSocket user:', transformed);
-      return transformed;
-    });
-
-    const uniqueUsers = transformedUsers.filter(
-      (user, index, self) => index === self.findIndex(u => u.userId === user.userId)
-    );
-
-    console.log('👥 Final transformed online users:', uniqueUsers);
-    setOnlineUsers(uniqueUsers);
-  }, [realTimeOnlineUsers]);
-
-  // Update group members with online status from WebSocket
-  useEffect(() => {
-    console.log('📡 Online users updated:', onlineUsers);
-    console.log('👥 Current group members:', groupMembers);
-    
-    // Create a map of online users for quick lookup
-    const onlineUserMap = {};
-    onlineUsers.forEach(user => {
-      onlineUserMap[Number(user.userId)] = user;
-    });
-    
-    setGroupMembers(prevMembers => {
-      const updated = prevMembers.map(member => {
-        const userId = Number(member.userId);
-        const onlineUser = onlineUserMap[userId];
-        
-        if (onlineUser) {
-          const updatedMember = {
-            ...member,
-            status: onlineUser.status || 'online'
-          };
-          console.log(`🔄 Updated member ${userId} status to:`, updatedMember.status);
-          return updatedMember;
-        }
-        
-        // If not found in online users, set to offline
-        const updatedMember = {
-          ...member,
-          status: 'offline'
-        };
-        console.log(`🔄 Set member ${userId} status to offline (not online)`);
-        return updatedMember;
-      });
-      
-      console.log('🔄 Updated group members with online status:', updated);
-      return updated;
-    });
-  }, [onlineUsers]);
-
-  // Update groups with online status information
-  useEffect(() => {
-    if (groupMembers.length === 0) return;
-    
-    const onlineUserIds = new Set(
-      groupMembers
-        .filter(member => member.status === 'online' && member.userId !== user?.userId)
-        .map(member => Number(member.userId))
-    );
-
-    setGroups(prevGroups => {
-      return prevGroups.map(group => ({
-        ...group,
-        isOnline: onlineUserIds.size > 0,
-      }));
-    });
-  }, [groupMembers, user?.userId, onlineUsers]);
-
+  //removed webSocket onlineUsers dependency
 
   // Load messages for a group (only once per group)
   const loadGroupMessages = useCallback(async (groupId) => {
