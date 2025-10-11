@@ -6,6 +6,7 @@ import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './components/Dashboard';
+import ErrorBoundary from './components/Common/ErrorBoundary';
 // Lazy load components for better performance
 const ChatContainer = lazy(() => import('./components/Chat/ChatContainer'));
 const DMContainer = lazy(() => import('./components/Chat/DMContainer'));
@@ -30,11 +31,13 @@ function App() {
                 </ProtectedRoute>
               } />
               <Route path="/chat" element={
+                <ErrorBoundary>
                 <ProtectedRoute>
                   <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading...</div>}>
                     <ChatContainer />
                   </Suspense>
                 </ProtectedRoute>
+                </ErrorBoundary>
               } />
               <Route path="/dm" element={
                 <ProtectedRoute>

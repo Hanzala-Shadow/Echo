@@ -136,12 +136,16 @@ const ChatContainer = () => {
     
     // Add local messages first (these include optimistic messages)
     localGroupMessages.forEach(msg => {
-      messageMap.set(msg.id, msg);
+      // 🆕 SAFELY HANDLE ID - ensure it's a string for Map keys
+      const safeId = String(msg.id || '');
+      messageMap.set(safeId, msg);
     });
     
     // Add real-time messages, overwriting any duplicates
     realtimeGroupMessages.forEach(msg => {
-      messageMap.set(msg.id, msg);
+      // 🆕 SAFELY HANDLE ID - ensure it's a string for Map keys
+      const safeId = String(msg.id || '');
+      messageMap.set(safeId, msg);
     });
 
     // Convert map back to array and sort by timestamp
@@ -507,7 +511,10 @@ const handleGroupSelect = async (group) => {
     realTimeMessages.forEach(wsMsg => {
       // Match by content, group, and timestamp (within 3 seconds)
       localMessages.forEach(localMsg => {
-        if (localMsg.id.startsWith('optimistic-') &&     //this ensures we only check optimistic messages and is declared in the handleSendMessage function
+        // 🆕 SAFELY CHECK IF ID IS A STRING BEFORE CALLING startsWith
+        const isOptimistic = typeof localMsg.id === 'string' && localMsg.id.startsWith('optimistic-');
+        
+        if (isOptimistic && 
             localMsg.content === wsMsg.content && 
             localMsg.groupId === wsMsg.groupId &&
             Math.abs(new Date(localMsg.timestamp) - new Date(wsMsg.timestamp)) < 3000) {
