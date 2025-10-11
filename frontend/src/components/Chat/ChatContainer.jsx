@@ -531,6 +531,17 @@
       }
     }, [realTimeMessages, localMessages, activeGroup, user]);
 
+    // ADD THIS EFFECT - Auto-hide sidebars on mobile when group is selected
+    useEffect(() => {
+      if (activeGroup) {
+        // On mobile, hide both sidebars when a group is active to show message area
+        if (window.innerWidth < 640) { // sm breakpoint
+          setShowGroupSidebar(false);
+          setShowUserSidebar(false);
+        }
+      }
+    }, [activeGroup]);
+
     console.log('ChatContainer state:', {
       activeGroup: activeGroup?.id,
       showGroupSidebar,
@@ -560,27 +571,56 @@
         </div>
 
         <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900 dark:to-indigo-900">
-          {/* Mobile header with toggle buttons */}
+          {/* Mobile header with toggle buttons - UPDATED VERSION */}
           <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
-            <button
-              onClick={() => setShowGroupSidebar(!showGroupSidebar)}
-              className="p-2 rounded-lg theme-text hover-scale"
-              style={{ backgroundColor: colors.surface }}
-            >
-              ☰
-            </button>
-            <button
-              onClick={() => setShowUserSidebar(!showUserSidebar)}
-              className="p-2 rounded-lg theme-text hover-scale"
-              style={{ backgroundColor: colors.surface }}
-            >
-              👥
-            </button>
+            {activeGroup ? (
+              // When group is selected - show back button to groups
+              <button
+                onClick={() => {
+                  setShowGroupSidebar(true);
+                  setShowUserSidebar(false);
+                }}
+                className="p-2 rounded-lg theme-text hover-scale"
+                style={{ backgroundColor: colors.surface }}
+              >
+                ← Groups
+              </button>
+            ) : (
+              // When no group selected - show menu buttons
+              <>
+                <button
+                  onClick={() => setShowGroupSidebar(!showGroupSidebar)}
+                  className="p-2 rounded-lg theme-text hover-scale"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  ☰
+                </button>
+                <button
+                  onClick={() => setShowUserSidebar(!showUserSidebar)}
+                  className="p-2 rounded-lg theme-text hover-scale"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  👥
+                </button>
+              </>
+            )}
+            
             <div className="flex-1 text-center">
               <h3 className="font-medium theme-text truncate">
                 {activeGroup ? activeGroup.name : 'Select a group'}
               </h3>
             </div>
+            
+            {/* Add user sidebar toggle when group is active */}
+            {activeGroup && (
+              <button
+                onClick={() => setShowUserSidebar(!showUserSidebar)}
+                className="p-2 rounded-lg theme-text hover-scale"
+                style={{ backgroundColor: colors.surface }}
+              >
+                👥
+              </button>
+            )}
           </div>
 
           <ChatHeader 
