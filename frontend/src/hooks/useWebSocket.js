@@ -345,19 +345,19 @@ const useWebSocket = (userId, token) => {
     };
 
     // 👇 Add locally before sending with a unique temporary ID
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const optimisticMessage = {
-      id: tempId,
-      content: messageData.content,
-      senderId: userId,
-      senderName: "You",
-      timestamp: new Date(messageData.timestamp),
-      type: 'text',
-      groupId: message.groupId,
-      status: 'pending',
-      isCurrentUser: true
-    };
-    setMessages(prev => [...prev, optimisticMessage]);
+    // const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // const optimisticMessage = {
+    //   id: tempId,
+    //   content: messageData.content,
+    //   senderId: userId,
+    //   senderName: "You",
+    //   timestamp: new Date(messageData.timestamp),
+    //   type: 'text',
+    //   groupId: message.groupId,
+    //   status: 'pending',
+    //   isCurrentUser: true
+    // };
+    // setMessages(prev => [...prev, optimisticMessage]);
 
     return sendWebSocketMessage(messageData);
   }, [userId, sendWebSocketMessage]);

@@ -393,7 +393,8 @@ const ChatContainer = () => {
   }, [token, user?.userId, loadedGroups]);
 
   // Handle group selection
-  const handleGroupSelect = async (group) => {
+  // Handle group selection - MODIFY EXISTING FUNCTION
+const handleGroupSelect = async (group) => {
     if (!group || !group.id) {
       console.log('⚠️ Invalid group selected');
       return;
@@ -405,6 +406,9 @@ const ChatContainer = () => {
     if (activeGroup && activeGroup.id !== group.id) {
       console.log('🚪 Leaving previous group:', activeGroup.id);
       leaveGroup(activeGroup.id);
+      // ADDED THESE TWO LINES - Clear messages when switching groups
+      setLocalMessages([]);
+      setLoadedGroups(new Set());
     }
 
     // Set new active group
@@ -419,6 +423,7 @@ const ChatContainer = () => {
   };
 
   // Handle sending a message
+  // Handle sending a message
   const handleSendMessage = (content) => {
     if (!activeGroup || !content.trim()) {
       console.log('⚠️ Cannot send message: no active group or empty content');
@@ -427,6 +432,22 @@ const ChatContainer = () => {
 
     console.log('📤 Sending message to group:', activeGroup.id);
     console.log('📤 Message content:', content);
+
+    // 🆕 ADD OPTIMISTIC MESSAGE TO LOCAL STATE
+    const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const optimisticMessage = {
+      id: tempId,
+      content: content.trim(),
+      senderId: user.userId,
+      senderName: user.username || "You",
+      timestamp: new Date(),
+      type: 'text',
+      groupId: activeGroup.id,
+      status: 'pending',
+      isCurrentUser: true
+    };
+
+    setLocalMessages(prev => [...prev, optimisticMessage]);
 
     // Send via WebSocket
     const success = sendMessage({
@@ -439,6 +460,12 @@ const ChatContainer = () => {
       console.log('✅ Message queued for sending to group:', activeGroup.id);
     } else {
       console.error('❌ Failed to send message to group:', activeGroup.id);
+      // 🆕 Mark as failed if WebSocket send fails
+      setLocalMessages(prev => 
+        prev.map(msg => 
+          msg.id === tempId ? {...msg, status: 'failed'} : msg
+        )
+      );
     }
   };
 
@@ -468,8 +495,39 @@ const ChatContainer = () => {
       if (activeGroup) {
         leaveGroup(activeGroup.id);
       }
+      console.log('🧹 ChatContainer unmounted, left group and cleaned up');
+      // Clear local messages when component unmounts
+      setLocalMessages([]);
+      setLoadedGroups(new Set());
     };
-  }, []);
+  }, [activeGroup]); // Add activeGroup to dependencies
+
+  // ADDED THIS EFFECT TO REMOVE OPTIMISTIC MESSAGES WHEN CONFIRMED
+  useEffect(() => {
+    if (!activeGroup || !user) return;
+
+    // Find optimistic messages that have been confirmed by server
+    const confirmedOptimisticIds = new Set();
+    
+    realTimeMessages.forEach(wsMsg => {
+      // Match by content, group, and timestamp (within 3 seconds)
+      localMessages.forEach(localMsg => {
+        if (localMsg.id.startsWith('optimistic-') &&     //this ensures we only check optimistic messages and is declared in the handleSendMessage function
+            localMsg.content === wsMsg.content && 
+            localMsg.groupId === wsMsg.groupId &&
+            Math.abs(new Date(localMsg.timestamp) - new Date(wsMsg.timestamp)) < 3000) {
+          confirmedOptimisticIds.add(localMsg.id);
+        }
+      });
+    });
+
+    if (confirmedOptimisticIds.size > 0) {
+      console.log('🔄 Removing confirmed optimistic messages:', Array.from(confirmedOptimisticIds));
+      setLocalMessages(prev => 
+        prev.filter(msg => !confirmedOptimisticIds.has(msg.id))
+      );
+    }
+  }, [realTimeMessages, localMessages, activeGroup, user]);
 
   console.log('ChatContainer state:', {
     activeGroup: activeGroup?.id,
