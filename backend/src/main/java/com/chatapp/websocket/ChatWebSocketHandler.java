@@ -27,21 +27,16 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     private UserRepository userRepository;
 
     @Autowired
-    private ChatService chatService; // ✅ Use ChatService for payload building
+    private ChatService chatService;
 
     @Autowired
     private ObjectMapper mapper;
 
     // Map<userId, WebSocketSession>
     private final Map<Long, WebSocketSession> onlineUsers = new ConcurrentHashMap<>();
-    
-    // Map to track file transfers
-    private final Map<String, FileTransferInfo> fileTransfers = new ConcurrentHashMap<>();
 
-    // Use a dedicated thread pool for broadcasting to avoid blocking
+    // Executor and queue for smooth broadcasting
     private final ExecutorService broadcastExecutor = Executors.newCachedThreadPool();
-    
-    // Queue for status updates to ensure ordered processing
     private final ConcurrentLinkedQueue<StatusUpdate> statusUpdateQueue = new ConcurrentLinkedQueue<>();
 
     @Override
@@ -66,11 +61,11 @@ public class ChatWebSocketHandler implements WebSocketHandler {
 
         // Send current online users list to the newly connected user
         sendCurrentOnlineUsers(session, userId);
-        
-        // Broadcast status update to all other users
+
+        // Notify others that this user is now online
         broadcastStatus(userId, true);
 
-        // ✅ Use ChatService.buildMessagePayload instead of local copy
+        // Deliver undelivered messages
         List<MessageDelivery> undelivered = chatService.getUndeliveredMessages(userId);
         for (MessageDelivery delivery : undelivered) {
             Map<String, Object> payload = chatService.buildMessagePayload(delivery.getMessage(), true);
@@ -78,49 +73,36 @@ public class ChatWebSocketHandler implements WebSocketHandler {
             chatService.markAsDelivered(delivery);
         }
     }
-    
-    /** Send current online users list to a newly connected user */
+
+    /** Send the current online users to a newly connected client */
     private void sendCurrentOnlineUsers(WebSocketSession session, Long currentUserId) throws Exception {
-        // Send status update for the current user first
+        // Send current user status first
         Map<String, Object> currentUserStatus = new HashMap<>();
         currentUserStatus.put("type", "status_update");
         currentUserStatus.put("user_id", currentUserId);
         currentUserStatus.put("online_status", true);
-        
+
         User currentUser = userRepository.findById(currentUserId).orElse(null);
         if (currentUser != null) {
-            currentUserStatus.put("user_name", currentUser.getUsername());
             currentUserStatus.put("username", currentUser.getUsername());
         }
-        
-        String currentUserMsg = mapper.writeValueAsString(currentUserStatus);
-        session.sendMessage(new TextMessage(currentUserMsg));
-        
-        // Send status updates for all other currently connected users
-        for (Map.Entry<Long, WebSocketSession> entry : onlineUsers.entrySet()) {
-            Long onlineUserId = entry.getKey();
-            WebSocketSession onlineSession = entry.getValue();
-            
-            // Skip the current user and any closed sessions
-            if (onlineUserId.equals(currentUserId) || !onlineSession.isOpen()) {
-                continue;
-            }
-            
-            // Send status update for each online user
+
+        session.sendMessage(new TextMessage(mapper.writeValueAsString(currentUserStatus)));
+
+        // Send all other online users
+        for (Long onlineUserId : onlineUsers.keySet()) {
+            if (onlineUserId.equals(currentUserId)) continue;
+
+            User onlineUser = userRepository.findById(onlineUserId).orElse(null);
+            if (onlineUser == null) continue;
+
             Map<String, Object> status = new HashMap<>();
             status.put("type", "status_update");
             status.put("user_id", onlineUserId);
-            status.put("online_status", true); // They're online by definition
-            
-            // Add user details
-            User user = userRepository.findById(onlineUserId).orElse(null);
-            if (user != null) {
-                status.put("user_name", user.getUsername());
-                status.put("username", user.getUsername());
-            }
-            
-            String msg = mapper.writeValueAsString(status);
-            session.sendMessage(new TextMessage(msg));
+            status.put("online_status", true);
+            status.put("username", onlineUser.getUsername());
+
+            session.sendMessage(new TextMessage(mapper.writeValueAsString(status)));
         }
     }
 
@@ -132,36 +114,49 @@ public class ChatWebSocketHandler implements WebSocketHandler {
         );
 
         String messageType = (String) payload.get("type");
-        
+
         switch (messageType) {
             case "message":
                 chatService.handleIncomingMessage(payload, onlineUsers);
                 break;
-            case "file_start":
-                handleFileStart(session, payload);
-                break;
-            case "file_chunk":
-                handleFileChunk(session, payload);
-                break;
-            case "file_end":
-                handleFileEnd(session, payload);
-                break;
-            case "file_cancel":
-                handleFileCancel(session, payload);
-                break;
-            case "user_joined":
-                handleUserJoined(session, payload);
-                break;
-            case "user_left":
-                handleUserLeft(session, payload);
-                break;
+
             case "typing_start":
             case "typing_stop":
-                handleTypingIndicator(session, payload);
+                handleTypingIndicator(payload);
                 break;
+
+            case "user_joined":
+                handleUserJoined(payload);
+                break;
+
+            case "user_left":
+                handleUserLeft(payload);
+                break;
+
             default:
                 System.out.println("Unknown message type: " + messageType);
         }
+    }
+
+    private void handleTypingIndicator(Map<String, Object> payload) throws Exception {
+        Long groupId = Long.valueOf(payload.get("group_id").toString());
+        Long userId = Long.valueOf(payload.get("user_id").toString());
+        String type = (String) payload.get("type");
+
+        Map<String, Object> broadcastPayload = new HashMap<>();
+        broadcastPayload.put("type", type);
+        broadcastPayload.put("group_id", groupId);
+        broadcastPayload.put("user_id", userId);
+
+        broadcastToAll(broadcastPayload, userId);
+    }
+
+    private void handleUserJoined(Map<String, Object> payload) {
+        System.out.println("User joined group: " + payload);
+    }
+
+    private void handleUserLeft(Map<String, Object> payload) {
+        System.out.println("User left group: " + payload);
     }
 
     @Override
@@ -202,52 +197,43 @@ public class ChatWebSocketHandler implements WebSocketHandler {
         return false;
     }
 
-    /** Broadcast user online/offline status with zero-latency optimization */
-    private void broadcastStatus(Long userId, boolean online) throws Exception {
-        // Create status update object
-        StatusUpdate update = new StatusUpdate(userId, online);
-        
-        // Add to queue for processing
-        statusUpdateQueue.offer(update);
-        
-        // Process immediately in a separate thread to avoid blocking
+    /** Broadcast user online/offline status */
+    private void broadcastStatus(Long userId, boolean online) {
+        statusUpdateQueue.offer(new StatusUpdate(userId, online));
         broadcastExecutor.submit(this::processStatusUpdates);
     }
-    
-    /** Process queued status updates */
+
     private void processStatusUpdates() {
         try {
             StatusUpdate update;
             while ((update = statusUpdateQueue.poll()) != null) {
-                // Build status message
                 Map<String, Object> status = new HashMap<>();
                 status.put("type", "status_update");
                 status.put("user_id", update.userId);
                 status.put("online_status", update.online);
-                
-                // Add user details for better client handling
+
                 User user = userRepository.findById(update.userId).orElse(null);
                 if (user != null) {
-                    status.put("user_name", user.getUsername());
                     status.put("username", user.getUsername());
                 }
 
                 String msg = mapper.writeValueAsString(status);
-                
-                // Broadcast to all online users with optimized sending
                 for (WebSocketSession s : onlineUsers.values()) {
-                    if (s.isOpen()) {
-                        try {
-                            s.sendMessage(new TextMessage(msg));
-                        } catch (Exception e) {
-                            System.out.println("Error sending status update to session: " + e.getMessage());
-                        }
-                    }
+                    if (s.isOpen()) s.sendMessage(new TextMessage(msg));
                 }
             }
         } catch (Exception e) {
             System.out.println("Error processing status updates: " + e.getMessage());
-            e.printStackTrace();
+        }
+    }
+
+    private void broadcastToAll(Map<String, Object> payload, Long senderId) throws Exception {
+        String message = mapper.writeValueAsString(payload);
+        TextMessage textMessage = new TextMessage(message);
+        for (Map.Entry<Long, WebSocketSession> entry : onlineUsers.entrySet()) {
+            if (!entry.getKey().equals(senderId) && entry.getValue().isOpen()) {
+                entry.getValue().sendMessage(textMessage);
+            }
         }
     }
 
@@ -257,196 +243,20 @@ public class ChatWebSocketHandler implements WebSocketHandler {
             session.close(CloseStatus.NORMAL);
         }
     }
-    
-    /**
-     * Force a user's online status to false in the database
-     * This ensures proper cleanup even if WebSocket disconnection fails
-     */
+
     public void forceOfflineStatus(Long userId) throws Exception {
         User user = userRepository.findById(userId).orElse(null);
         if (user != null) {
             user.setOnlineStatus(false);
             userRepository.save(user);
-            
-            // Also broadcast the status update to ensure all clients are in sync
             broadcastStatus(userId, false);
         }
     }
-    
-    // File transfer handlers
-    private void handleFileStart(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        Long senderId = Long.valueOf(payload.get("sender_id").toString());
-        Long groupId = Long.valueOf(payload.get("group_id").toString());
-        String fileName = (String) payload.get("file_name");
-        Long fileSize = Long.valueOf(payload.get("file_size").toString());
-        String fileType = (String) payload.get("file_type");
-        
-        // Generate unique upload ID
-        String uploadId = UUID.randomUUID().toString();
-        
-        // Store file transfer info
-        FileTransferInfo transferInfo = new FileTransferInfo();
-        transferInfo.senderId = senderId;
-        transferInfo.groupId = groupId;
-        transferInfo.fileName = fileName;
-        transferInfo.fileSize = fileSize;
-        transferInfo.fileType = fileType;
-        transferInfo.uploadId = uploadId;
-        transferInfo.chunks = new HashMap<>();
-        
-        fileTransfers.put(uploadId, transferInfo);
-        
-        // Broadcast file start to group members
-        Map<String, Object> broadcastPayload = new HashMap<>();
-        broadcastPayload.put("type", "file_start");
-        broadcastPayload.put("upload_id", uploadId);
-        broadcastPayload.put("sender_id", senderId);
-        broadcastPayload.put("group_id", groupId);
-        broadcastPayload.put("file_name", fileName);
-        broadcastPayload.put("file_size", fileSize);
-        broadcastPayload.put("file_type", fileType);
-        
-        broadcastToGroup(groupId, broadcastPayload, senderId);
-    }
-    
-    private void handleFileChunk(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        String uploadId = (String) payload.get("upload_id");
-        Integer chunkIndex = Integer.valueOf(payload.get("chunk_index").toString());
-        List<Integer> chunkData = (List<Integer>) payload.get("chunk_data");
-        Integer totalChunks = Integer.valueOf(payload.get("total_chunks").toString());
-        
-        FileTransferInfo transferInfo = fileTransfers.get(uploadId);
-        if (transferInfo == null) {
-            System.out.println("File transfer not found: " + uploadId);
-            return;
-        }
-        
-        // Store chunk
-        transferInfo.chunks.put(chunkIndex, chunkData);
-        
-        // Broadcast chunk to group members
-        Map<String, Object> broadcastPayload = new HashMap<>();
-        broadcastPayload.put("type", "file_chunk");
-        broadcastPayload.put("upload_id", uploadId);
-        broadcastPayload.put("chunk_index", chunkIndex);
-        broadcastPayload.put("chunk_data", chunkData);
-        broadcastPayload.put("total_chunks", totalChunks);
-        
-        broadcastToGroup(transferInfo.groupId, broadcastPayload, transferInfo.senderId);
-    }
-    
-    private void handleFileEnd(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        String uploadId = (String) payload.get("upload_id");
-        String fileName = (String) payload.get("file_name");
-        Long fileSize = Long.valueOf(payload.get("file_size").toString());
-        
-        FileTransferInfo transferInfo = fileTransfers.get(uploadId);
-        if (transferInfo == null) {
-            System.out.println("File transfer not found: " + uploadId);
-            return;
-        }
-        
-        // Broadcast file end to group members
-        Map<String, Object> broadcastPayload = new HashMap<>();
-        broadcastPayload.put("type", "file_end");
-        broadcastPayload.put("upload_id", uploadId);
-        broadcastPayload.put("file_name", fileName);
-        broadcastPayload.put("file_size", fileSize);
-        
-        broadcastToGroup(transferInfo.groupId, broadcastPayload, transferInfo.senderId);
-        
-        // Clean up
-        fileTransfers.remove(uploadId);
-        
-        // Create a file message entry
-        Map<String, Object> fileMessagePayload = new HashMap<>();
-        fileMessagePayload.put("type", "file");
-        fileMessagePayload.put("sender_id", transferInfo.senderId);
-        fileMessagePayload.put("group_id", transferInfo.groupId);
-        fileMessagePayload.put("file_name", fileName);
-        fileMessagePayload.put("file_size", fileSize);
-        fileMessagePayload.put("file_type", transferInfo.fileType);
-        
-        // Handle as file message
-        chatService.handleIncomingFileMessage(fileMessagePayload, onlineUsers);
-    }
-    
-    private void handleFileCancel(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        String uploadId = (String) payload.get("upload_id");
-        
-        FileTransferInfo transferInfo = fileTransfers.get(uploadId);
-        if (transferInfo == null) {
-            System.out.println("File transfer not found: " + uploadId);
-            return;
-        }
-        
-        // Broadcast cancel to group members
-        Map<String, Object> broadcastPayload = new HashMap<>();
-        broadcastPayload.put("type", "file_cancel");
-        broadcastPayload.put("upload_id", uploadId);
-        
-        broadcastToGroup(transferInfo.groupId, broadcastPayload, transferInfo.senderId);
-        
-        // Clean up
-        fileTransfers.remove(uploadId);
-    }
-    
-    private void handleUserJoined(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        // Handle user joining a group
-        System.out.println("User joined group: " + payload);
-    }
-    
-    private void handleUserLeft(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        // Handle user leaving a group
-        System.out.println("User left group: " + payload);
-    }
-    
-    private void handleTypingIndicator(WebSocketSession session, Map<String, Object> payload) throws Exception {
-        // Handle typing indicators
-        Long groupId = Long.valueOf(payload.get("group_id").toString());
-        Long userId = Long.valueOf(payload.get("user_id").toString());
-        String type = (String) payload.get("type");
-        
-        Map<String, Object> broadcastPayload = new HashMap<>();
-        broadcastPayload.put("type", type);
-        broadcastPayload.put("group_id", groupId);
-        broadcastPayload.put("user_id", userId);
-        
-        broadcastToGroup(groupId, broadcastPayload, userId);
-    }
-    
-    private void broadcastToGroup(Long groupId, Map<String, Object> payload, Long senderId) throws Exception {
-        String message = mapper.writeValueAsString(payload);
-        TextMessage textMessage = new TextMessage(message);
-        
-        // Get all group members (simplified - in real implementation, you'd query the database)
-        for (WebSocketSession session : onlineUsers.values()) {
-            if (session.isOpen()) {
-                try {
-                    session.sendMessage(textMessage);
-                } catch (Exception e) {
-                    System.out.println("Error sending message to session: " + e.getMessage());
-                }
-            }
-        }
-    }
-    
-    // Inner class to track file transfer information
-    private static class FileTransferInfo {
-        Long senderId;
-        Long groupId;
-        String fileName;
-        Long fileSize;
-        String fileType;
-        String uploadId;
-        Map<Integer, List<Integer>> chunks;
-    }
-    
-    // Inner class to represent a status update
+
+    /** Helper record for queued status updates */
     private static class StatusUpdate {
         final Long userId;
         final boolean online;
-        
         StatusUpdate(Long userId, boolean online) {
             this.userId = userId;
             this.online = online;
