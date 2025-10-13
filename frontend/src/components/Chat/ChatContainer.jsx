@@ -1,4 +1,5 @@
   import React, { useState, useEffect, useMemo, useCallback } from 'react';
+  import { useRef } from 'react';
   import { useLocation, useNavigate } from 'react-router-dom';
   import { useAuth } from '../../context/AuthContext';
   import { useTheme } from '../../context/ThemeContext';
@@ -25,6 +26,7 @@
     const [loading, setLoading] = useState(false);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [groupMembers, setGroupMembers] = useState([]); // Track members of active group
+    const messagesEndRef = useRef(null);
 
     // ADDED THIS - Get group member usernames for the hook
     const groupMemberUsernames = useMemo(() => 
@@ -542,6 +544,26 @@
       }
     }, [activeGroup]);
 
+    // ADD THIS SINGLE SCROLL EFFECT
+    useEffect(() => {
+      if (!activeGroup || allMessages.length === 0) return;
+
+      console.log('🔄 Auto-scrolling to bottom, messages:', allMessages.length);
+
+      // Simple timeout to ensure DOM is updated
+      const timer = setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ 
+            behavior: 'auto',
+            block: 'end'
+          });
+          console.log('✅ Scrolled to bottom using ref');
+        }
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }, [allMessages, activeGroup]);
+
     console.log('ChatContainer state:', {
       activeGroup: activeGroup?.id,
       showGroupSidebar,
@@ -555,7 +577,11 @@
       <div className="flex h-screen theme-bg flex-col sm:flex-row">
         {/* Group Sidebar - Hidden by default on mobile */}
         <div 
-          className={`transition-all duration-300 ${showGroupSidebar ? 'w-full sm:w-80 absolute sm:relative z-20 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 absolute sm:relative'} overflow-hidden border-r theme-border sm:block`}
+          className={`transition-all duration-300 ${showGroupSidebar ? 'w-full sm:w-80 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-r theme-border sm:block`}
+          style={{ 
+            height: showGroupSidebar ? '100vh' : '0',
+            zIndex: showGroupSidebar ? 30 : -1
+          }}
         >
           {showGroupSidebar && (
             <GroupSidebar
@@ -571,97 +597,130 @@
         </div>
 
         <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900 dark:to-indigo-900">
-          {/* Mobile header with toggle buttons - UPDATED VERSION */}
-          <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
-            {activeGroup ? (
-              // When group is selected - show back button to groups
-              <button
-                onClick={() => {
-                  setShowGroupSidebar(true);
-                  setShowUserSidebar(false);
-                }}
-                className="p-2 rounded-lg theme-text hover-scale"
-                style={{ backgroundColor: colors.surface }}
-              >
-                ← Groups
-              </button>
-            ) : (
-              // When no group selected - show menu buttons
-              <>
+          {/* 🆕 FIX: Make mobile header sticky too */}
+          <div className="sticky top-0 z-20 sm:static" style={{ backgroundColor: colors.surface }}>
+            {/* Mobile header with toggle buttons - UPDATED VERSION */}
+            <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
+              {activeGroup ? (
+                // When group is selected - show back button to groups
                 <button
-                  onClick={() => setShowGroupSidebar(!showGroupSidebar)}
+                  onClick={() => {
+                    setActiveGroup(null); // ADD THIS - Clear active group
+                    setShowGroupSidebar(true);
+                    setShowUserSidebar(false);
+                    // Clear messages when going back to groups list
+                    setLocalMessages([]);
+                    setLoadedGroups(new Set());
+                  }}
                   className="p-2 rounded-lg theme-text hover-scale"
                   style={{ backgroundColor: colors.surface }}
                 >
-                  ☰
+                  ← Groups
                 </button>
+              ) : (
+                // When no group selected - show menu buttons
+                <>
+                  <button
+                    onClick={() => {
+                      setShowGroupSidebar(!showGroupSidebar);
+                      setShowUserSidebar(false); // Close user sidebar when opening group sidebar
+                    }}
+                    className="p-2 rounded-lg theme-text hover-scale"
+                    style={{ backgroundColor: colors.surface }}
+                  >
+                    ☰
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowUserSidebar(!showUserSidebar);
+                      setShowGroupSidebar(false); // Close group sidebar when opening user sidebar
+                    }}
+                    className="p-2 rounded-lg theme-text hover-scale"
+                    style={{ backgroundColor: colors.surface }}
+                  >
+                    👥
+                  </button>
+                </>
+              )}
+              
+              <div className="flex-1 text-center">
+                <h3 className="font-medium theme-text truncate">
+                  {activeGroup ? activeGroup.name : 'Select a group'}
+                </h3>
+              </div>
+              
+              {/* Add user sidebar toggle when group is active */}
+              {activeGroup && (
                 <button
-                  onClick={() => setShowUserSidebar(!showUserSidebar)}
+                  onClick={() => {
+                    setShowUserSidebar(!showUserSidebar);
+                    setShowGroupSidebar(false); // Close group sidebar when opening user sidebar
+                  }}
                   className="p-2 rounded-lg theme-text hover-scale"
                   style={{ backgroundColor: colors.surface }}
                 >
                   👥
                 </button>
-              </>
-            )}
-            
-            <div className="flex-1 text-center">
-              <h3 className="font-medium theme-text truncate">
-                {activeGroup ? activeGroup.name : 'Select a group'}
-              </h3>
+              )}
             </div>
-            
-            {/* Add user sidebar toggle when group is active */}
-            {activeGroup && (
-              <button
-                onClick={() => setShowUserSidebar(!showUserSidebar)}
-                className="p-2 rounded-lg theme-text hover-scale"
-                style={{ backgroundColor: colors.surface }}
-              >
-                👥
-              </button>
-            )}
           </div>
 
-          <ChatHeader 
-            group={activeGroup}
-            isConnected={isConnected}
-            isDarkMode={isDarkMode}
-            colors={colors}
-          />
+          {/* 🆕 FIX: Make ChatHeader sticky on mobile */}
+          <div className="sticky top-[48px] z-10 sm:static" style={{ backgroundColor: colors.surface }}>
+            <ChatHeader 
+              group={activeGroup}
+              isConnected={isConnected}
+              isDarkMode={isDarkMode}
+              colors={colors}
+            />
+          </div>
           
-          <MessageList 
-            messages={allMessages} 
-            currentUserId={user?.userId}
-            isDarkMode={isDarkMode}
-            colors={colors}
-            loading={loading && !loadedGroups.has(activeGroup?.id)}
-          />
+          {/* 🆕 FIX: Make MessageList scrollable with proper spacing */}
+          <div className="flex-1 overflow-y-auto">
+            <MessageList 
+              messages={allMessages} 
+              currentUserId={user?.userId}
+              isDarkMode={isDarkMode}
+              colors={colors}
+              loading={loading && !loadedGroups.has(activeGroup?.id)}
+            />
+            {/* Add this empty div for scrolling reference */}
+            <div ref={messagesEndRef} />
+          </div>
           
-          <MessageInput
-            onSendMessage={handleSendMessage}
-            disabled={!activeGroup || !isConnected}
-            placeholder={
-              !activeGroup 
-                ? "Select a group to start chatting" 
-                : !isConnected 
-                  ? "Connecting..." 
-                  : "Type a message..."
-            }
-            isDarkMode={isDarkMode}
-            colors={colors}
-            activeGroupId={activeGroup?.id}
-          />
+          {/* 🆕 FIX: Make MessageInput sticky at bottom on mobile */}
+          <div className="sticky bottom-0 z-10 bg-inherit sm:static">
+            <MessageInput
+              onSendMessage={handleSendMessage}
+              disabled={!activeGroup || !isConnected}
+              placeholder={
+                !activeGroup 
+                  ? "Select a group to start chatting" 
+                  : !isConnected 
+                    ? "Connecting..." 
+                    : "Type a message..."
+              }
+              isDarkMode={isDarkMode}
+              colors={colors}
+              activeGroupId={activeGroup?.id}
+            />
+          </div>
         </div>
 
         {/* User Sidebar - Hidden by default on mobile */}
-        <div className={`transition-all duration-300 ${showUserSidebar ? 'w-full sm:w-64 absolute sm:relative z-20 sm:z-auto inset-0 sm:inset-auto theme-surface mt-16 sm:mt-0' : 'w-0 absolute sm:relative'} overflow-hidden border-l theme-border sm:block`}>
+        <div className={`transition-all duration-300 ${showUserSidebar ? 'w-full sm:w-64 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-l theme-border sm:block`}
+          style={{ 
+            height: showUserSidebar ? '100vh' : '0',
+            zIndex: showUserSidebar ? 30 : -1
+          }}
+        >
           {showUserSidebar && activeGroup && (
             <UserSidebar
               users={groupMembers}
               currentUserId={user?.userId}
               isDarkMode={isDarkMode}
               colors={colors}
+              onClose={() => setShowUserSidebar(false)}
             />
           )}
         </div>

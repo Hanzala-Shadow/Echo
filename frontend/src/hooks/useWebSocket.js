@@ -330,6 +330,12 @@ const useWebSocket = (userId, token) => {
   }, []);
 
   const sendMessage = useCallback((message) => {
+    // Allow typing indicators without content
+    if (message.type === 'typing_start' || message.type === 'typing_stop') {
+      console.log('📤 Preparing to send typing indicator to group:', message.group_id);
+      return sendWebSocketMessage(message);
+    }
+
     if (!message.groupId || !message.content?.trim()) {
       console.error('❌ Invalid message format:', message);
       return false;

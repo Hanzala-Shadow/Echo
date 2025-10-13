@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; 
 import Skeleton from '../Common/Skeleton';
 import ApiClient from '../../utils/apis';
 
@@ -17,6 +18,7 @@ const DMSidebar = ({
   newMessageIndicator = {} // Add this prop for new message indicators
 }) => {
   const [userDetails, setUserDetails] = useState({});
+  const navigate = useNavigate(); 
 
   const getInitials = (name) => {
     return name
@@ -37,7 +39,9 @@ const DMSidebar = ({
         } else if (group.id && !userDetails[group.id]) {
           try {
             const membersData = await ApiClient.chat.getGroupMembers(group.id);
-            const otherUserId = membersData.member_ids.find(id => id !== currentUserId);
+            const members = membersData?.members || [];
+            const otherUserId = members.find(member => member.user_id !== currentUserId)?.user_id;
+            
             if (otherUserId) {
               const otherUserDetails = await ApiClient.users.getProfile(otherUserId);
               details[group.id] = otherUserDetails;
@@ -108,9 +112,39 @@ const DMSidebar = ({
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
+      {/* UPDATED HEADER WITH DASHBOARD BUTTON */}
       <div className="p-3 border-b theme-border">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold theme-text">Direct Messages</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold theme-text">Direct Messages</h2>
+            {/* Dashboard button - visible on mobile */}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="p-2 rounded-lg hover-scale theme-text sm:hidden"
+              style={{ 
+                backgroundColor: colors.background,
+                border: `1px solid ${colors.border}`
+              }}
+              title="Back to Dashboard"
+            >
+              🏠
+            </button>
+          </div>
+        </div>
+        
+        {/* Dashboard link for desktop */}
+        <div className="hidden sm:block">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full p-2 rounded-lg text-left theme-text hover-scale flex items-center gap-2"
+            style={{ 
+              backgroundColor: colors.background,
+              border: `1px solid ${colors.border}`
+            }}
+          >
+            <span>🏠</span>
+            <span>Back to Dashboard</span>
+          </button>
         </div>
       </div>
 

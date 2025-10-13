@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ApiClient from '../../utils/apis'; // Import API client to fetch user details
 import Skeleton from '../Common/Skeleton';
 
-const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
+const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => { // ADD onClose prop
   const [userDetails, setUserDetails] = useState({}); // Cache for user details
   const [loadingDetails, setLoadingDetails] = useState(false); // Start as false since we might not need to load
 
@@ -176,20 +176,38 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors }) => {
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
+      {/* UPDATED HEADER WITH CLOSE BUTTON */}
       <div className="p-4 border-b-2 theme-border">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">👥</span>
-          <h3 className="font-semibold theme-text">Members</h3>
-          <span 
-            className="ml-auto px-2 py-1 rounded-full text-xs"
-            style={{ 
-              backgroundColor: colors.background,
-              color: colors.textSecondary,
-              border: `1px solid ${colors.border}`
-            }}
-          >
-            {transformedUsers.length}
-          </span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">👥</span>
+            <h3 className="font-semibold theme-text">Members</h3>
+            <span 
+              className="ml-2 px-2 py-1 rounded-full text-xs"
+              style={{ 
+                backgroundColor: colors.background,
+                color: colors.textSecondary,
+                border: `1px solid ${colors.border}`
+              }}
+            >
+              {transformedUsers.length}
+            </span>
+          </div>
+          
+          {/* CLOSE BUTTON FOR MOBILE */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover-scale theme-text sm:hidden"
+              style={{ 
+                backgroundColor: colors.background,
+                border: `1px solid ${colors.border}`
+              }}
+              title="Close sidebar"
+            >
+              ✕
+            </button>
+          )}
         </div>
         
         {/* Connection Status */}

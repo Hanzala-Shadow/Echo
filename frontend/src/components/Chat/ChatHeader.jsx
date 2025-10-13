@@ -2,11 +2,11 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-const ChatHeader = ({ group, targetUser, isConnected, isDarkMode, colors, isDM = false }) => {
+const ChatHeader = ({ group, targetUser, isConnected, isDarkMode, colors, isDM = false, isPending = false }) => { // ADD isPending prop
   const navigate = useNavigate();
   const { onlineUsers } = useAuth();
   
-  if (!group) {
+  if (!group && !isPending) { // UPDATE this condition
     return (
       <div 
         className="h-16 border-b-2 theme-border flex items-center justify-center"
@@ -37,6 +37,11 @@ const ChatHeader = ({ group, targetUser, isConnected, isDarkMode, colors, isDM =
     navigate('/dashboard', { state: { activeTab: 'groups' } });
   };
 
+  // ADD THIS: Determine display name based on state
+  const displayName = isPending 
+    ? `New chat with ${targetUser?.username || 'user'}`
+    : (isDM && targetUser ? targetUser.username : group?.name);
+
   return (
     <div 
       className="h-16 border-b-2 theme-border flex items-center justify-between px-4"
@@ -64,9 +69,13 @@ const ChatHeader = ({ group, targetUser, isConnected, isDarkMode, colors, isDM =
               color: isDarkMode ? '#ffffff' : '#000000'
             }}
           >
-            {isDM && targetUser ? getInitials(targetUser.username) : getInitials(group.name)}
+            {/* UPDATE this part */}
+            {isPending && targetUser ? getInitials(targetUser.username) : 
+             isDM && targetUser ? getInitials(targetUser.username) : 
+             group ? getInitials(group.name) : '?'}
           </div>
-          {isDM && targetUser && isUserOnline(targetUser.userId) && (
+          {/* UPDATE this part */}
+          {!isPending && isDM && targetUser && isUserOnline(targetUser.userId) && (
             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full"></div>
           )}
         </div>
@@ -74,17 +83,31 @@ const ChatHeader = ({ group, targetUser, isConnected, isDarkMode, colors, isDM =
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold theme-text">
-              {isDM && targetUser ? targetUser.username : group.name}
+              {/* UPDATE this part - use the displayName variable */}
+              {displayName}
             </h3>
-            {group.isOnline && !isDM && (
+            {/* UPDATE this part */}
+            {!isPending && group?.isOnline && !isDM && (
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             )}
-            {isDM && targetUser && isUserOnline(targetUser.userId) && (
+            {!isPending && isDM && targetUser && isUserOnline(targetUser.userId) && (
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             )}
           </div>
           <div className="flex items-center gap-2 text-sm theme-text-secondary">
-            {isDM ? (
+            {/* UPDATE this entire section */}
+            {isPending ? (
+              <>
+                <span>🆕</span>
+                <span>Start a new conversation</span>
+                {targetUser && (
+                  <>
+                    <span>•</span>
+                    <span>Type a message to begin</span>
+                  </>
+                )}
+              </>
+            ) : isDM ? (
               <>
                 <span>👤</span>
                 <span>Direct Message</span>
@@ -104,8 +127,8 @@ const ChatHeader = ({ group, targetUser, isConnected, isDarkMode, colors, isDM =
             ) : (
               <>
                 <span>👥</span>
-                <span>{group.memberCount} members</span>
-                {group.description && (
+                <span>{group?.memberCount} members</span>
+                {group?.description && (
                   <>
                     <span>•</span>
                     <span className="truncate max-w-40">{group.description}</span>

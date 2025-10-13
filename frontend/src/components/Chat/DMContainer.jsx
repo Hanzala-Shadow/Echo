@@ -25,9 +25,21 @@ const DMContainer = () => {
   const [typingUsers, setTypingUsers] = useState({});
   const [error, setError] = useState(null);
   const [lastMessageTimestamps, setLastMessageTimestamps] = useState({});
-  const [pendingDMInfo, setPendingDMInfo] = useState(null); // Store info for DM that needs to be created
+  //const [pendingDMInfo, setPendingDMInfo] = useState(null); // Store info for DM that needs to be created
   const [isSending, setIsSending] = useState(false); // Track sending state
   const [newMessageIndicator, setNewMessageIndicator] = useState({}); // Track new messages for visual indicators
+  const messagesEndRef = useRef(null);
+
+  const [pendingDMInfo, setPendingDMInfo] = useState(() => {
+    // Check if we came from Dashboard with targetUserId
+    if (location.state?.targetUserId) {
+      return {
+        targetUserId: location.state.targetUserId,
+        username: location.state.username
+      };
+    }
+    return null;
+  });
 
   // Refs for better state management
   const activeDMRef = useRef(activeDM);
@@ -145,21 +157,26 @@ const DMContainer = () => {
         const userGroups = await ApiClient.chat.getGroups();
         
         // Filter for direct message groups (groups with exactly 2 members)
-        // ABANDON isDirect logic - use member count instead
         const directGroups = userGroups.filter(group => {
           const memberCount = group.memberCount || group.member_count || 0;
           return memberCount === 2;
         });
         
+        // In the fetchUserDMs useEffect, update the transformedDMs to ensure consistent IDs:
         const transformedDMs = await Promise.all(directGroups.map(async (group) => {
           // Get the actual member count from the group data
           const memberCount = group.memberCount || group.member_count || 2;
           
+          // 🆕 Ensure consistent ID type (convert to number if it's a string)
+          const groupId = group.groupId || group.group_id || group.id;
+          const normalizedId = typeof groupId === 'string' ? parseInt(groupId, 10) : groupId;
+          
           // Get the other user in this DM
           let otherUser = null;
           try {
-            const membersData = await ApiClient.chat.getGroupMembers(group.groupId || group.group_id || group.id);
-            const otherUserId = membersData.member_ids.find(id => id !== user.userId);
+            const membersData = await ApiClient.chat.getGroupMembers(normalizedId);
+            const members = membersData?.members || [];
+            const otherUserId = members.find(member => member.user_id !== user.userId)?.user_id;
             if (otherUserId) {
               otherUser = await ApiClient.users.getProfile(otherUserId);
             }
@@ -168,7 +185,7 @@ const DMContainer = () => {
           }
           
           return {
-            id: group.groupId || group.group_id || group.id,
+            id: normalizedId, // 🆕 Use normalized ID
             name: group.groupName || group.group_name || (otherUser ? `DM with ${otherUser.username}` : 'DM'),
             isDirect: true,
             memberCount: memberCount,
@@ -178,27 +195,7 @@ const DMContainer = () => {
         
         setDMs(transformedDMs);
         
-        // If there's a group ID in the navigation state, select it
-        if (location.state?.groupId) {
-          const dmToSelect = transformedDMs.find(dm => dm.id === location.state.groupId);
-          if (dmToSelect) {
-            // Small delay to ensure UI is ready
-            setTimeout(() => {
-              handleDMSelect(dmToSelect);
-            }, 100);
-          }
-          // Clear the state so it doesn't persist on refresh
-          window.history.replaceState({}, document.title, location.pathname);
-        } 
-        // If there's a target user in the navigation state, store it for later use
-        else if (location.state?.targetUserId) {
-          setPendingDMInfo({
-            targetUserId: location.state.targetUserId,
-            username: location.state.username
-          });
-          // Clear the state so it doesn't persist on refresh
-          window.history.replaceState({}, document.title, location.pathname);
-        }
+        // ... rest of your code
       } catch (error) {
         console.error('Error fetching DMs:', error);
         setError('Failed to load direct messages. Please refresh the page.');
@@ -258,6 +255,17 @@ const DMContainer = () => {
     
     setTypingUsers(newTypingUsers);
   }, [webSocketMessages]);
+
+  // ADD THIS EFFECT - Auto-hide sidebars on mobile when DM is selected
+  useEffect(() => {
+    if (activeDM) {
+      // On mobile, hide both sidebars when a DM is active to show message area
+      if (window.innerWidth < 640) { // sm breakpoint
+        setShowDMSidebar(false);
+        setShowUserSidebar(false);
+      }
+    }
+  }, [activeDM]);
 
   // Load messages for a DM (only once per DM)
   const loadDMMessages = useCallback(async (groupId) => {
@@ -344,7 +352,9 @@ const DMContainer = () => {
       // Get the other user in this DM
       try {
         const membersData = await ApiClient.chat.getGroupMembers(dm.id);
-        const otherUserId = membersData.member_ids.find(id => id !== user?.userId);
+        // FIX: Use members array instead of member_ids
+        const members = membersData?.members || [];
+        const otherUserId = members.find(member => member.user_id !== user?.userId)?.user_id;
         if (otherUserId) {
           const userDetails = await ApiClient.users.getProfile(otherUserId);
           setTargetUser(userDetails);
@@ -371,6 +381,52 @@ const DMContainer = () => {
     }
   };
 
+  // Add this function to refresh DMs list
+  // Update the refreshDMs function to return the refreshed data
+const refreshDMs = async () => {
+    if (!token || !user?.userId) return [];
+    
+    try {
+      const userGroups = await ApiClient.chat.getGroups();
+      
+      // Filter for direct message groups (groups with exactly 2 members)
+      const directGroups = userGroups.filter(group => {
+        const memberCount = group.memberCount || group.member_count || 0;
+        return memberCount === 2;
+      });
+      
+      const transformedDMs = await Promise.all(directGroups.map(async (group) => {
+        const memberCount = group.memberCount || group.member_count || 2;
+        
+        let otherUser = null;
+        try {
+          const membersData = await ApiClient.chat.getGroupMembers(group.groupId || group.group_id || group.id);
+          const members = membersData?.members || [];
+          const otherUserId = members.find(member => member.user_id !== user.userId)?.user_id;
+          if (otherUserId) {
+            otherUser = await ApiClient.users.getProfile(otherUserId);
+          }
+        } catch (error) {
+          console.warn('Error fetching DM partner:', error);
+        }
+        
+        return {
+          id: group.groupId || group.group_id || group.id,
+          name: group.groupName || group.group_name || (otherUser ? `DM with ${otherUser.username}` : 'DM'),
+          isDirect: true,
+          memberCount: memberCount,
+          otherUser: otherUser
+        };
+      }));
+      
+      setDMs(transformedDMs);
+      return transformedDMs; // 🆕 RETURN the refreshed DMs
+    } catch (error) {
+      console.error('Error refreshing DMs:', error);
+      return []; // 🆕 Return empty array on error
+    }
+  };
+
   // Handle sending a message
   const handleSendMessage = async (content) => {
     if (!content.trim()) {
@@ -381,96 +437,114 @@ const DMContainer = () => {
     setError(null);
 
     try {
+      let targetGroupId = activeDM?.id;
+
       // If we have pending DM info (navigated to a user but no group created yet)
       if (pendingDMInfo && !activeDM) {
-        // Create a new direct message group
-        const newGroup = await ApiClient.chat.createGroup(
-          `DM with ${pendingDMInfo.username}`, 
-          [pendingDMInfo.targetUserId]
-        );
+        console.log('🆕 Creating new DM for user:', pendingDMInfo);
         
-        // Create a DM object for this new group
-        const newDM = {
-          id: newGroup.group_id,
-          name: `DM with ${pendingDMInfo.username}`,
-          isDirect: true,
-          memberCount: 2
-        };
-        
-        // Get the target user details
-        const userDetails = await ApiClient.users.getProfile(pendingDMInfo.targetUserId);
-        
-        // Update all states synchronously and wait for completion
-        await new Promise((resolve) => {
-          // Batch all state updates together
+        try {
+          // Create a new direct message group
+          const newGroup = await ApiClient.chat.createGroup(
+            `DM with ${pendingDMInfo.username}`, 
+            [pendingDMInfo.targetUserId]
+          );
+          
+          console.log('✅ New DM group created:', newGroup);
+          
+          // 🆕 FIX: Handle both response formats (group_id vs groupId)
+          const newGroupId = newGroup.group_id || newGroup.groupId;
+          
+          if (!newGroupId) {
+            throw new Error('No group ID returned from server');
+          }
+          
+          // Create a DM object for this new group
+          const newDM = {
+            id: newGroupId,
+            name: `DM with ${pendingDMInfo.username}`,
+            isDirect: true,
+            memberCount: 2,
+            otherUser: {
+              userId: pendingDMInfo.targetUserId,
+              username: pendingDMInfo.username
+            }
+          };
+          
+          // Get the target user details
+          const userDetails = await ApiClient.users.getProfile(pendingDMInfo.targetUserId);
+          
+          // 🆕 FIX: Update state immediately and ensure DM is added to list
           setActiveDM(newDM);
           setTargetUser(userDetails);
           setPendingDMInfo(null);
-          setDMs(prev => [...prev, newDM]);
           
-          // Use a small delay to ensure React processes the state updates
-          setTimeout(() => {
-            // Verify that the state has been updated
-            if (activeDMRef.current?.id === newDM.id) {
-              resolve();
-            } else {
-              // If not updated yet, wait a bit more
-              setTimeout(resolve, 50);
+          // 🆕 FIX: Use functional update to ensure we have latest state
+          setDMs(prev => {
+            // Check if DM already exists to avoid duplicates
+            const exists = prev.some(dm => dm.id === newGroupId);
+            if (exists) {
+              return prev;
             }
-          }, 10);
-        });
-        
-        // Join the DM via WebSocket
-        joinGroup(newDM.id);
-        
-        // Small delay to ensure WebSocket connection is established
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Send the message
-        const success = sendMessage({
-          groupId: newDM.id,
-          content: content.trim(),
-          type: 'text'
-        });
-        
-        if (!success) {
-          // If sending failed, show error but don't break the flow
-          console.error('Failed to send message through WebSocket');
-          setError('Failed to send message. Please try again.');
-        } else {
-          // Clear any typing indicator after sending
-          sendWebSocketMessage({
-            type: 'typing_stop',
-            group_id: newDM.id,
-            user_id: user?.userId
+            return [...prev, newDM];
           });
+          
+          // Set the target group ID for the new DM
+          targetGroupId = newGroupId;
+          
+          // Join the DM via WebSocket
+          joinGroup(newGroupId);
+          
+          console.log('✅ New DM setup complete, group ID:', targetGroupId);
+          
+        } catch (error) {
+          console.error('❌ Error creating DM group:', error);
+          setError('Failed to create conversation. Please try again.');
+          setIsSending(false);
+          return;
         }
       } 
-      // If we have an active DM, send the message normally
-      else if (activeDM) {
+      
+      // Rest of your send message logic...
+      if (targetGroupId) {
+        // Your existing optimistic message code...
+        const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const optimisticMessage = {
+          id: tempId,
+          content: content.trim(),
+          senderId: user.userId,
+          senderName: user.username || "You",
+          timestamp: new Date(),
+          type: 'text',
+          groupId: targetGroupId,
+          status: 'pending',
+          isCurrentUser: true
+        };
+
+        setLocalMessages(prev => [...prev, optimisticMessage]);
+
         // Send via WebSocket
         const success = sendMessage({
-          groupId: activeDM.id,
+          groupId: targetGroupId,
           content: content.trim(),
           type: 'text'
         });
 
         if (!success) {
-          // If sending failed, show error but don't break the flow
-          console.error('Failed to send message through WebSocket');
           setError('Failed to send message. Please try again.');
+          setLocalMessages(prev => 
+            prev.map(msg => 
+              msg.id === tempId ? {...msg, status: 'failed'} : msg
+            )
+          );
         } else {
-          // Clear any typing indicator after sending
+          console.log('✅ Message queued for sending to group:', targetGroupId);
           sendWebSocketMessage({
             type: 'typing_stop',
-            group_id: activeDM.id,
+            group_id: targetGroupId,
             user_id: user?.userId
           });
         }
-      } else {
-        // This shouldn't happen, but just in case
-        console.warn('No valid DM context to send message');
-        setError('Unable to send message. Please refresh the page and try again.');
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -502,10 +576,187 @@ const DMContainer = () => {
     };
   }, []);
 
+  // ADDED THIS EFFECT TO REMOVE OPTIMISTIC MESSAGES WHEN CONFIRMED
+  useEffect(() => {
+    if (!activeDM || !user) return;
+
+    // Find optimistic messages that have been confirmed by server
+    const confirmedOptimisticIds = new Set();
+    
+    realTimeMessages.forEach(wsMsg => {
+      // Match by content, group, and timestamp (within 3 seconds)
+      localMessages.forEach(localMsg => {
+        // 🆕 SAFELY CHECK IF ID IS A STRING BEFORE CALLING startsWith
+        const isOptimistic = typeof localMsg.id === 'string' && localMsg.id.startsWith('optimistic-');
+        
+        if (isOptimistic && 
+            localMsg.content === wsMsg.content && 
+            localMsg.groupId === wsMsg.groupId &&
+            Math.abs(new Date(localMsg.timestamp) - new Date(wsMsg.timestamp)) < 3000) {
+          confirmedOptimisticIds.add(localMsg.id);
+        }
+      });
+    });
+
+    if (confirmedOptimisticIds.size > 0) {
+      console.log('🔄 Removing confirmed optimistic messages:', Array.from(confirmedOptimisticIds));
+      setLocalMessages(prev => 
+        prev.filter(msg => !confirmedOptimisticIds.has(msg.id))
+      );
+    }
+  }, [realTimeMessages, localMessages, activeDM, user]);
+
+  // ADD THIS EFFECT - Handle navigation from dashboard with pending DM info
+  // Updated this effect to handle DM creation better
+  useEffect(() => {
+    const handleNavigationState = async () => {
+      console.log('📍 DMContainer - Navigation state received:', location.state);
+
+      // Clear any existing state first
+      setActiveDM(null);
+      setPendingDMInfo(null);
+      setTargetUser(null);
+      
+      // Handle case where we have a groupId (existing DM)
+      if (location.state?.groupId && !activeDM) {
+        console.log('🎯 Handling navigation with existing groupId:', location.state.groupId);
+        
+        // First check in current DMs
+        let existingDM = dms.find(dm => dm.id == location.state.groupId); // 🆕 Use == for loose comparison
+        
+        if (existingDM) {
+          console.log('✅ Found existing DM in current list, selecting it:', existingDM);
+          await handleDMSelect(existingDM);
+
+          // On mobile, ensure sidebars are hidden and chat is shown
+          if (window.innerWidth < 640) {
+            setShowDMSidebar(false);
+            setShowUserSidebar(false);
+          }
+        } else {
+          console.log('❌ Group ID not found in current DMs list, refreshing DMs...');
+          
+          // 🆕 Get the refreshed DMs and use them directly
+          const refreshedDMs = await refreshDMs();
+          console.log('🔄 Refreshed DMs:', refreshedDMs);
+          
+          // Try again with refreshed list
+          existingDM = refreshedDMs.find(dm => dm.id == location.state.groupId); // 🆕 Use == for loose comparison
+          
+          if (existingDM) {
+            console.log('✅ Found existing DM after refresh, selecting it:', existingDM);
+            await handleDMSelect(existingDM);
+          } else {
+            console.error('❌ Group still not found after refresh. Looking for:', location.state.groupId);
+            console.log('Available DMs after refresh:', refreshedDMs.map(dm => ({ id: dm.id, name: dm.name })));
+            setError('Conversation not found. Please try again.');
+          }
+        }
+        
+        // Clear the navigation state
+        window.history.replaceState({}, document.title, location.pathname);
+      }
+      // Handle case where we have targetUserId (new DM)
+      else if (location.state?.targetUserId && !activeDM) {
+        console.log('🎯 Handling navigation with new DM target:', location.state);
+        
+        const { targetUserId, username } = location.state;
+        
+        // Refresh DMs first to ensure we have the latest list
+        const refreshedDMs = await refreshDMs();
+        
+        // Check if DM already exists with this user
+        const existingDM = refreshedDMs.find(dm => {
+          const otherUserId = dm.otherUser?.userId;
+          return otherUserId == targetUserId; // 🆕 Use == for loose comparison
+        });
+        
+        if (existingDM) {
+          console.log('✅ Existing DM found, selecting it:', existingDM);
+          await handleDMSelect(existingDM);
+
+          // On mobile, ensure sidebars are hidden and chat is shown
+          if (window.innerWidth < 640) {
+            setShowDMSidebar(false);
+            setShowUserSidebar(false);
+          }
+        } else {
+          console.log('🆕 No existing DM found, setting pending info for new DM creation');
+          setPendingDMInfo({
+            targetUserId: targetUserId,
+            username: username
+          });
+          
+          // Set target user for display
+          try {
+            const userDetails = await ApiClient.users.getProfile(targetUserId);
+            setTargetUser(userDetails);
+          } catch (error) {
+            console.error('Error fetching user details:', error);
+            setTargetUser({
+              userId: targetUserId,
+              username: username
+            });
+          }
+
+          // On mobile, ensure sidebars are hidden and chat is shown
+          if (window.innerWidth < 640) {
+            setShowDMSidebar(false);
+            setShowUserSidebar(false);
+          }
+        }
+        
+        // Clear the navigation state
+        window.history.replaceState({}, document.title, location.pathname);
+      }
+    };
+
+    // Only run if we have navigation state and no active DM
+    if ((location.state?.groupId || location.state?.targetUserId) && !activeDM) {
+      handleNavigationState();
+    }
+  }, [location.state]); // 🆕 Remove dms and handleDMSelect from dependencies to prevent loops
+
+  // ADD THIS SINGLE SCROLL EFFECT - place it with your other effects
+  useEffect(() => {
+    if ((!activeDM && !pendingDMInfo) || allMessages.length === 0) return;
+
+    console.log('🔄 Auto-scrolling to bottom, messages:', allMessages.length);
+
+    // Simple timeout to ensure DOM is updated
+    const timer = setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'auto',
+          block: 'end'
+        });
+        console.log('✅ Scrolled to bottom using ref');
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [allMessages, activeDM, pendingDMInfo]);
+
+  useEffect(() => {
+    if (activeDM) {
+      // On mobile, hide both sidebars when a DM is active to show message area
+      if (window.innerWidth < 640) { // sm breakpoint
+        setShowDMSidebar(false);
+        setShowUserSidebar(false);
+      }
+    }
+  }, [activeDM]);
+
   return (
     <div className="flex h-screen theme-bg flex-col sm:flex-row">
       {/* DM Sidebar - Hidden by default on mobile */}
-      <div className={`transition-all duration-300 ${showDMSidebar ? 'w-full sm:w-80 absolute sm:relative z-20 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 absolute sm:relative'} overflow-hidden border-r theme-border sm:block`}>
+      <div 
+        className={`transition-all duration-300 ${showDMSidebar ? 'w-full sm:w-80 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-r theme-border sm:block`}
+        style={{ 
+          height: showDMSidebar ? '100vh' : '0',
+          zIndex: showDMSidebar ? 30 : -1
+        }}
+      >
         {showDMSidebar && (
           <DMSidebar
             groups={dms}
@@ -525,75 +776,139 @@ const DMContainer = () => {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
-        {/* Mobile header with toggle button */}
-        <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
-          <button
-            onClick={() => setShowDMSidebar(!showDMSidebar)}
-            className="p-2 rounded-lg theme-text hover-scale"
-            style={{ backgroundColor: colors.surface }}
-          >
-            ☰
-          </button>
-          <button
-            onClick={() => setShowUserSidebar(!showUserSidebar)}
-            className="p-2 rounded-lg theme-text hover-scale"
-            style={{ backgroundColor: colors.surface }}
-          >
-            👥
-          </button>
-          <div className="flex-1 text-center">
-            <h3 className="font-medium theme-text truncate">
-              {activeDM ? activeDM.name.replace('DM with ', '') : 'Direct Messages'}
-            </h3>
+        {/* 🆕 FIX: Make mobile header sticky too */}
+        <div className="sticky top-0 z-20 sm:static" style={{ backgroundColor: colors.surface }}>
+          {/* Mobile header with toggle buttons - UPDATED VERSION */}
+          <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
+            {activeDM ? (
+              // When DM is selected - show back button to DMs
+              <button
+                onClick={() => {
+                  setActiveDM(null); // Clear active DM
+                  setTargetUser(null); // Clear target user  
+                  setShowDMSidebar(true);
+                  setShowUserSidebar(false);
+                  // Clear messages when going back to DMs list
+                  setLocalMessages([]);
+                  setLoadedDMs(new Set());
+                  setPendingDMInfo(null);
+                }}
+                className="p-2 rounded-lg theme-text hover-scale"
+                style={{ backgroundColor: colors.surface }}
+              >
+                ← DMs
+              </button>
+            ) : (
+              // When no DM selected - show menu buttons
+              <>
+                <button
+                  onClick={() => {
+                    setShowDMSidebar(!showDMSidebar);
+                    setShowUserSidebar(false);
+                  }}
+                  className="p-2 rounded-lg theme-text hover-scale"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  ☰
+                </button>
+                <button
+                  onClick={() => {
+                    setShowUserSidebar(!showUserSidebar);
+                    setShowDMSidebar(false);
+                  }}
+                  className="p-2 rounded-lg theme-text hover-scale"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  👥
+                </button>
+              </>
+            )}
+            
+            <div className="flex-1 text-center">
+              <h3 className="font-medium theme-text truncate">
+                {activeDM ? activeDM.name.replace('DM with ', '') : 'Direct Messages'}
+              </h3>
+            </div>
+            
+            {/* Add user sidebar toggle when DM is active */}
+            {activeDM && (
+              <button
+                onClick={() => {
+                  setShowUserSidebar(!showUserSidebar);
+                  setShowDMSidebar(false);
+                }}
+                className="p-2 rounded-lg theme-text hover-scale"
+                style={{ backgroundColor: colors.surface }}
+              >
+                👥
+              </button>
+            )}
           </div>
         </div>
 
-        <ChatHeader 
-          group={activeDM}
-          targetUser={targetUser}
-          isConnected={isConnected}
-          isDarkMode={isDarkMode}
-          colors={colors}
-          isDM={true}
-        />
+        {/* 🆕 FIX: Make ChatHeader sticky on mobile */}
+        <div className="sticky top-[48px] z-10 sm:static" style={{ backgroundColor: colors.surface }}>
+          <ChatHeader 
+            group={activeDM}
+            targetUser={targetUser}
+            isConnected={isConnected}
+            isDarkMode={isDarkMode}
+            colors={colors}
+            isDM={true}
+            isPending={!!pendingDMInfo && !activeDM}
+          />
+        </div>
         
-        <MessageList 
-          messages={allMessages} 
-          currentUserId={user?.userId}
-          isDarkMode={isDarkMode}
-          colors={colors}
-          loading={loading && !loadedDMs.has(activeDM?.id)}
-        />
+        {/* 🆕 FIX: Make MessageList scrollable with proper spacing */}
+        <div className="flex-1 overflow-y-auto">
+          <MessageList 
+            messages={allMessages} 
+            currentUserId={user?.userId}
+            isDarkMode={isDarkMode}
+            colors={colors}
+            loading={loading && !loadedDMs.has(activeDM?.id)}
+          />
+          {/* Add this empty div for scrolling reference */}
+          <div ref={messagesEndRef} />
+          
+          {error && (
+            <div className="p-2 bg-red-100 border border-red-400 text-red-700 rounded mx-4 my-2">
+              {error}
+            </div>
+          )}
+        </div>
         
-        {error && (
-          <div className="p-2 bg-red-100 border border-red-400 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-        
-        <MessageInput
-          onSendMessage={handleSendMessage}
-          disabled={(!activeDM && !pendingDMInfo) || isSending || !isConnected}
-          placeholder={
-            !activeDM && !pendingDMInfo
-              ? "Select a conversation to start chatting" 
-              : !isConnected 
-                ? "Connecting..." 
-                : isSending
-                  ? "Sending..."
-                  : "Type a message..."
-          }
-          isDarkMode={isDarkMode}
-          colors={colors}
-          activeGroupId={activeDM?.id}
-          onTyping={handleTyping}
-        />
+        {/* 🆕 FIX: Make MessageInput sticky at bottom on mobile */}
+        <div className="sticky bottom-0 z-10 bg-inherit sm:static">
+          <MessageInput
+            onSendMessage={handleSendMessage}
+            disabled={(!activeDM && !pendingDMInfo) || isSending || !isConnected}
+            placeholder={
+              !activeDM && !pendingDMInfo
+                ? "Select a conversation to start chatting" 
+                : !isConnected 
+                  ? "Connecting..." 
+                  : isSending
+                    ? "Sending..."
+                    : "Type a message..."
+            }
+            isDarkMode={isDarkMode}
+            colors={colors}
+            activeGroupId={activeDM?.id}
+            onTyping={handleTyping}
+          />
+        </div>
       </div>
 
       {/* User Sidebar - Hidden by default on mobile and now shows nothing */}
-      <div className={`transition-all duration-300 ${showUserSidebar ? 'w-full sm:w-64 absolute sm:relative z-20 sm:z-auto inset-0 sm:inset-auto theme-surface mt-16 sm:mt-0' : 'w-0 absolute sm:relative'} overflow-hidden border-l theme-border sm:block`}>
+      <div 
+        className={`transition-all duration-300 ${showUserSidebar ? 'w-full sm:w-64 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-l theme-border sm:block`}
+        style={{ 
+          height: showUserSidebar ? '100vh' : '0',
+          zIndex: showUserSidebar ? 30 : -1
+        }}
+      >
         {showUserSidebar && activeDM && targetUser && (
-          // Removed the call buttons and show nothing instead
           <div className="p-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="relative">
@@ -611,8 +926,6 @@ const DMContainer = () => {
                 </p>
               </div>
             </div>
-            
-            {/* Removed call buttons - showing nothing instead as requested */}
           </div>
         )}
       </div>

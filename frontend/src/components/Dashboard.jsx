@@ -125,7 +125,9 @@ const Dashboard = () => {
         for (const group of directGroups) {
           try {
             const membersData = await ApiClient.chat.getGroupMembers(group.groupId || group.group_id || group.id);
-            if (membersData.member_ids.includes(targetUser.userId) && membersData.member_ids.includes(user.userId)) {
+            const members = membersData?.members || [];
+            const memberIds = members.map(member => member.user_id);
+            if (memberIds.includes(targetUser.userId) && memberIds.includes(user.userId)) {
               existingDM = group;
               break;
             }

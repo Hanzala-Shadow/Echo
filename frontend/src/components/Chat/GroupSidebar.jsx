@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom'; // ADD THIS IMPORT
 import Skeleton from '../Common/Skeleton';
 
 const GroupSidebar = ({ 
@@ -10,6 +11,8 @@ const GroupSidebar = ({
   colors,
   loading = false 
 }) => {
+  const navigate = useNavigate(); // ADD THIS HOOK
+  
   console.log('GroupSidebar rendered with props:', {
     groups: groups?.length,
     activeGroupId,
@@ -61,7 +64,21 @@ const GroupSidebar = ({
     >
       <div className="p-3 border-b theme-border">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold theme-text">Groups</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold theme-text">Groups</h2>
+            {/* Dashboard button - visible on mobile */}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="p-2 rounded-lg hover-scale theme-text sm:hidden"
+              style={{ 
+                backgroundColor: colors.background,
+                border: `1px solid ${colors.border}`
+              }}
+              title="Back to Dashboard"
+            >
+              🏠
+            </button>
+          </div>
           <button
             onClick={(e) => {
               console.log('🎯 Create group button clicked - PLUS SIGN');
@@ -83,9 +100,26 @@ const GroupSidebar = ({
             <span className="text-xl font-bold">+</span>
           </button>
         </div>
+        
+        {/* Dashboard link for desktop */}
+        <div className="hidden sm:block">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full p-2 rounded-lg text-left theme-text hover-scale flex items-center gap-2"
+            style={{ 
+              backgroundColor: colors.background,
+              border: `1px solid ${colors.border}`
+            }}
+          >
+            <span>🏠</span>
+            <span>Back to Dashboard</span>
+          </button>
+        </div>
       </div>
 
-       <div className="flex-1 overflow-y-auto">
+      {/* REMOVED DUPLICATE BUTTON SECTION */}
+
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
           renderGroupSkeletons()
         ) : groups.length === 0 ? (
