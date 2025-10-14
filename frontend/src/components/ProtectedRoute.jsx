@@ -1,9 +1,15 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  
+  console.log('=== PROTECTED ROUTE DEBUG ===');
+  console.log('ProtectedRoute - current location:', location);
+  console.log('ProtectedRoute - user:', user);
+  console.log('ProtectedRoute - loading:', loading);
   
   if (loading) {
     return (
@@ -16,13 +22,15 @@ const ProtectedRoute = ({ children }) => {
     );
   }
   
-  return user ? children : <Navigate to="/login" />;
+  // Check if user exists and has required properties
+  if (user && user.token && user.userId) {
+    console.log('ProtectedRoute - valid user, rendering children');
+    return children;
+  } else {
+    console.log('ProtectedRoute - no valid user, redirecting to login');
+    // Pass the attempted location to login page so we can redirect back after login
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
 };
 
 export default ProtectedRoute;
-
-
-
-
-
-

@@ -25,59 +25,42 @@ const Register = () => {
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  // In Register.jsx, update the handleSubmit function:
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    if (formData.password !== formData.confirmPassword) 
-    {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
+  if (formData.password !== formData.confirmPassword) {
+    setError('Passwords do not match');
+    setLoading(false);
+    return;
+  }
 
-    try 
-    {
-      await register(formData.username, formData.email, formData.password);
-      navigate('/login'); // or auto-login and send to dashboard
-      // await login(formData.email, formData.password);   // depends on what you want to do; straight to dashboard or to login page (marzi) default preferred
-      // navigate('/dashboard');
-    } 
-    catch (err) {
-      setError(err.message);
+  try {
+    const result = await register(formData.username, formData.email, formData.password); // or auto-login and send to dashboard
+    // await login(formData.email, formData.password);   // depends on what you want to do; straight to dashboard or to login page (marzi) default preferred
+    // navigate('/dashboard');
+    
+    if (result.success) {
+      // Show success message and redirect to login
+      setError(`✅ ${result.message}`);
+      setTimeout(() => navigate('/login'), 2000);
     }
-    finally 
-    {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async () => {
-    setError('');
-    setLoading(true);
-
-    try 
-    {
-      await login('alice@example.com', 'StrongPass123!');
-      navigate('/dashboard');
-    } 
-    catch (err) 
-    {
-      setError(err.message);
-    } 
-    finally 
-    {
-      setLoading(false);
-    }
-  };
+    
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
-    <div className="min-h-screen flex items-center justify-center theme-bg transition-colors duration-500">
+    <div className="min-h-screen flex items-center justify-center theme-bg transition-colors duration-500 p-4">
       {/* Background Pattern */}
       <div className="absolute inset-0 overflow-hidden">
         <div 
-          className="absolute -top-40 -right-40 w-80 h-80 rounded-full opacity-20 animate-float" 
+          className="absolute -top-20 -right-20 w-40 h-40 rounded-full opacity-20 animate-float" 
           style={{ 
             background: isDarkMode 
               ? 'linear-gradient(45deg, #ffffff, #e5e7eb)' 
@@ -85,7 +68,7 @@ const Register = () => {
           }}
         ></div>
         <div 
-          className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full opacity-20 animate-float-delayed" 
+          className="absolute -bottom-20 -left-20 w-40 h-40 rounded-full opacity-20 animate-float-delayed" 
           style={{ 
             background: isDarkMode 
               ? 'linear-gradient(45deg, #ffffff, #e5e7eb)' 
@@ -96,26 +79,26 @@ const Register = () => {
 
       <div className="w-full max-w-md mx-auto relative z-10">
         {/* Theme Toggle */}
-        <div className="flex justify-center mb-8 fade-in">
+        <div className="flex justify-center mb-6 fade-in">
           <ThemeToggle />
         </div>
 
         {/* Register Form */}
-        <div className="border-2 rounded-2xl py-10 px-8 theme-surface transition-colors duration-500 shadow-2xl glass-effect slide-up hover-scale">
-          <div className="text-center mb-10 fade-in">
-            <h1 className="text-3xl font-bold mb-3 theme-text transition-colors duration-500">
+        <div className="border rounded-2xl py-8 px-6 theme-surface transition-colors duration-500 shadow-xl glass-effect slide-up hover-scale">
+          <div className="text-center mb-8 fade-in">
+            <h1 className="text-2xl font-bold mb-2 theme-text transition-colors duration-500">
               CREATE ACCOUNT
             </h1>
-            <p className="text-sm theme-text-secondary transition-colors duration-500">
+            <p className="text-xs theme-text-secondary transition-colors duration-500">
               Join Echo Chat today
             </p>
           </div>
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-4">
               <div>
                 <label 
                   htmlFor="username" 
-                  className="block text-sm font-medium mb-3 uppercase tracking-wider transition-colors duration-500"
+                  className="block text-xs font-medium mb-2 uppercase tracking-wider transition-colors duration-500"
                   style={{ color: colors.text }}
                 >
                   USERNAME
@@ -125,7 +108,7 @@ const Register = () => {
                   name="username"
                   type="text"
                   required
-                  className="w-full px-4 py-4 border-2 rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
+                  className="w-full px-3 py-3 border rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
                   style={{
                     backgroundColor: colors.surfaceSecondary,
                     borderColor: colors.border,
@@ -140,7 +123,7 @@ const Register = () => {
               <div>
                 <label 
                   htmlFor="email" 
-                  className="block text-sm font-medium mb-3 uppercase tracking-wider transition-colors duration-500"
+                  className="block text-xs font-medium mb-2 uppercase tracking-wider transition-colors duration-500"
                   style={{ color: colors.text }}
                 >
                   EMAIL ADDRESS
@@ -151,7 +134,7 @@ const Register = () => {
                   type="email"
                   autoComplete="email"
                   required
-                  className="w-full px-4 py-4 border-2 rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
+                  className="w-full px-3 py-3 border rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
                   style={{
                     backgroundColor: colors.surfaceSecondary,
                     borderColor: colors.border,
@@ -166,7 +149,7 @@ const Register = () => {
               <div>
                 <label 
                   htmlFor="password" 
-                  className="block text-sm font-medium mb-3 uppercase tracking-wider transition-colors duration-500"
+                  className="block text-xs font-medium mb-2 uppercase tracking-wider transition-colors duration-500"
                   style={{ color: colors.text }}
                 >
                   PASSWORD
@@ -177,7 +160,7 @@ const Register = () => {
                   type="password"
                   autoComplete="new-password"
                   required
-                  className="w-full px-4 py-4 border-2 rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
+                  className="w-full px-3 py-3 border rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
                   style={{
                     backgroundColor: colors.surfaceSecondary,
                     borderColor: colors.border,
@@ -192,7 +175,7 @@ const Register = () => {
               <div>
                 <label 
                   htmlFor="confirmPassword" 
-                  className="block text-sm font-medium mb-3 uppercase tracking-wider transition-colors duration-500"
+                  className="block text-xs font-medium mb-2 uppercase tracking-wider transition-colors duration-500"
                   style={{ color: colors.text }}
                 >
                   CONFIRM PASSWORD
@@ -203,7 +186,7 @@ const Register = () => {
                   type="password"
                   autoComplete="new-password"
                   required
-                  className="w-full px-4 py-4 border-2 rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
+                  className="w-full px-3 py-3 border rounded-xl transition-all duration-500 focus:outline-none text-sm hover-scale"
                   style={{
                     backgroundColor: colors.surfaceSecondary,
                     borderColor: colors.border,
@@ -218,14 +201,14 @@ const Register = () => {
 
             {error && (
               <div 
-                className="border-2 p-4 rounded-xl transition-colors duration-500"
+                className="border p-3 rounded-xl transition-colors duration-500"
                 style={{
                   backgroundColor: colors.surfaceSecondary,
                   borderColor: colors.border
                 }}
               >
                 <p 
-                  className="text-sm transition-colors duration-500"
+                  className="text-xs transition-colors duration-500"
                   style={{ color: colors.error }}
                 >
                   {error}
@@ -237,29 +220,15 @@ const Register = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 px-6 border-2 font-medium transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm rounded-xl hover-scale theme-button"
+                className="w-full py-3 px-4 border font-medium transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm rounded-xl hover-scale theme-button"
               >
                 {loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
               </button>
-              
-              <button
-                type="button"
-                onClick={handleDemoLogin}
-                disabled={loading}
-                className="w-full py-3 px-6 border-2 font-medium transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm rounded-xl hover-scale"
-                style={{
-                  backgroundColor: 'transparent',
-                  borderColor: colors.border,
-                  color: colors.text
-                }}
-              >
-                {loading ? 'DEMO LOGIN...' : '🚀 DEMO LOGIN'}
-              </button>
             </div>
 
-            <div className="text-center mt-8 space-y-3 fade-in">
+            <div className="text-center mt-6 space-y-3 fade-in">
               <p 
-                className="text-sm transition-colors duration-500"
+                className="text-xs transition-colors duration-500"
                 style={{ color: colors.textSecondary }}
               >
                 Already have an account? <a href="/login" className="underline">Sign in</a>

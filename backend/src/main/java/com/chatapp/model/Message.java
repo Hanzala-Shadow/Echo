@@ -19,11 +19,23 @@ public class Message {
     @Column(nullable = false)
     private Long groupId;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    // ✅ Keep text content optional (nullable) for media messages
+    @Column(columnDefinition = "TEXT")
     private String content;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    // ✅ Link to media message (nullable for text-only)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "media_id", referencedColumnName = "media_id")
+    private MediaMessage mediaMessage;
+
+    // Existing relationship with message delivery
+    @OneToMany(mappedBy = "message", cascade = CascadeType.ALL)
+    private List<MessageDelivery> deliveries = new ArrayList<>();
+
+    // --- Getters & Setters ---
 
     public Long getMessageId() { return messageId; }
     public void setMessageId(Long messageId) { this.messageId = messageId; }
@@ -40,13 +52,9 @@ public class Message {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
-    @OneToMany(mappedBy = "message", cascade = CascadeType.ALL)
-    private List<MessageDelivery> deliveries = new ArrayList<>();
+    public MediaMessage getMediaMessage() { return mediaMessage; }
+    public void setMediaMessage(MediaMessage mediaMessage) { this.mediaMessage = mediaMessage; }
 
     public List<MessageDelivery> getDeliveries() { return deliveries; }
     public void setDeliveries(List<MessageDelivery> deliveries) { this.deliveries = deliveries; }
-
-    
 }
-
-

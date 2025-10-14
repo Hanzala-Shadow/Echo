@@ -13,6 +13,9 @@ import org.springframework.web.socket.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Component
 public class ChatWebSocketHandler implements WebSocketHandler {
@@ -32,56 +35,128 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     // Map<userId, WebSocketSession>
     private final Map<Long, WebSocketSession> onlineUsers = new ConcurrentHashMap<>();
 
+    // Executor and queue for smooth broadcasting
+    private final ExecutorService broadcastExecutor = Executors.newCachedThreadPool();
+    private final ConcurrentLinkedQueue<StatusUpdate> statusUpdateQueue = new ConcurrentLinkedQueue<>();
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        // JWT from query param: ws://host/ws/messages?token=JWT
         String token = Objects.requireNonNull(session.getUri().getQuery()).split("=")[1];
         Long userId;
 
         try {
             userId = jwtService.validateTokenAndGetUserId(token);
         } catch (Exception e) {
+            System.out.println("WebSocket connection error: " + e.getMessage());
+            e.printStackTrace();
             session.close(CloseStatus.NOT_ACCEPTABLE);
             return;
         }
 
-        // Mark user online
         User user = userRepository.findById(userId).orElseThrow();
         user.setOnlineStatus(true);
         userRepository.save(user);
 
         onlineUsers.put(userId, session);
 
-        // Broadcast online status
+        // Send current online users list to the newly connected user
+        sendCurrentOnlineUsers(session, userId);
+
+        // Notify others that this user is now online
         broadcastStatus(userId, true);
 
-        // Send undelivered messages
+        // Deliver undelivered messages
         List<MessageDelivery> undelivered = chatService.getUndeliveredMessages(userId);
         for (MessageDelivery delivery : undelivered) {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("message_id", delivery.getMessage().getMessageId());
-            payload.put("sender_id", delivery.getMessage().getSenderId());
-            payload.put("group_id", delivery.getMessage().getGroupId());
-            payload.put("content", delivery.getMessage().getContent());
-            payload.put("created_at", delivery.getMessage().getCreatedAt()); // LocalDateTime supported now
-            payload.put("delivered", true);
-
+            Map<String, Object> payload = chatService.buildMessagePayload(delivery.getMessage(), true);
             session.sendMessage(new TextMessage(mapper.writeValueAsString(payload)));
             chatService.markAsDelivered(delivery);
         }
     }
 
+    /** Send the current online users to a newly connected client */
+    private void sendCurrentOnlineUsers(WebSocketSession session, Long currentUserId) throws Exception {
+        // Send current user status first
+        Map<String, Object> currentUserStatus = new HashMap<>();
+        currentUserStatus.put("type", "status_update");
+        currentUserStatus.put("user_id", currentUserId);
+        currentUserStatus.put("online_status", true);
+
+        User currentUser = userRepository.findById(currentUserId).orElse(null);
+        if (currentUser != null) {
+            currentUserStatus.put("username", currentUser.getUsername());
+        }
+
+        session.sendMessage(new TextMessage(mapper.writeValueAsString(currentUserStatus)));
+
+        // Send all other online users
+        for (Long onlineUserId : onlineUsers.keySet()) {
+            if (onlineUserId.equals(currentUserId)) continue;
+
+            User onlineUser = userRepository.findById(onlineUserId).orElse(null);
+            if (onlineUser == null) continue;
+
+            Map<String, Object> status = new HashMap<>();
+            status.put("type", "status_update");
+            status.put("user_id", onlineUserId);
+            status.put("online_status", true);
+            status.put("username", onlineUser.getUsername());
+
+            session.sendMessage(new TextMessage(mapper.writeValueAsString(status)));
+        }
+    }
+
     @Override
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) throws Exception {
-        // Use TypeReference to ensure proper Map<String, Object> deserialization
         Map<String, Object> payload = mapper.readValue(
                 message.getPayload().toString(),
                 new TypeReference<Map<String, Object>>() {}
         );
 
-        if ("message".equals(payload.get("type"))) {
-            chatService.handleIncomingMessage(payload, onlineUsers);
+        String messageType = (String) payload.get("type");
+
+        switch (messageType) {
+            case "message":
+                chatService.handleIncomingMessage(payload, onlineUsers);
+                break;
+
+            case "typing_start":
+            case "typing_stop":
+                handleTypingIndicator(payload);
+                break;
+
+            case "user_joined":
+                handleUserJoined(payload);
+                break;
+
+            case "user_left":
+                handleUserLeft(payload);
+                break;
+
+            default:
+                System.out.println("Unknown message type: " + messageType);
         }
+    }
+
+    private void handleTypingIndicator(Map<String, Object> payload) throws Exception {
+        Long groupId = Long.valueOf(payload.get("group_id").toString());
+        Long userId = Long.valueOf(payload.get("user_id").toString());
+        String type = (String) payload.get("type");
+
+        Map<String, Object> broadcastPayload = new HashMap<>();
+        broadcastPayload.put("type", type);
+        broadcastPayload.put("group_id", groupId);
+        broadcastPayload.put("user_id", userId);
+
+        broadcastToAll(broadcastPayload, userId);
+    }
+
+    private void handleUserJoined(Map<String, Object> payload) {
+        System.out.println("User joined group: " + payload);
+    }
+
+    private void handleUserLeft(Map<String, Object> payload) {
+        System.out.println("User left group: " + payload);
     }
 
     @Override
@@ -90,61 +165,101 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     }
 
     @Override
-public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
-    Long userId = onlineUsers.entrySet().stream()
-            .filter(e -> e.getValue().equals(session))
-            .map(Map.Entry::getKey)
-            .findFirst()
-            .orElse(null);
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
+        Long userId = onlineUsers.entrySet().stream()
+                .filter(e -> e.getValue().equals(session))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
 
-    if (userId != null) {
-        onlineUsers.remove(userId);
+        if (userId != null) {
+            onlineUsers.remove(userId);
 
-        User user = userRepository.findById(userId).orElseThrow();
-        user.setOnlineStatus(false);
-        userRepository.save(user);
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                user.setOnlineStatus(false);
+                userRepository.save(user);
+            }
 
-        broadcastStatus(userId, false);
+            broadcastStatus(userId, false);
 
-        // Log reason for debugging
-        switch (closeStatus.getCode()) {
-            case 1000: // NORMAL
-                System.out.println("User " + userId + " disconnected normally (logout).");
-                break;
-            case 1001: // GOING_AWAY
-                System.out.println("User " + userId + " disconnected (browser closed/tab closed).");
-                break;
-            case 1011: // SERVER_ERROR
-                System.out.println("User " + userId + " disconnected due to server error.");
-                break;
-            default:
-                System.out.println("User " + userId + " disconnected. Reason: " + closeStatus);
+            switch (closeStatus.getCode()) {
+                case 1000: System.out.println("User " + userId + " disconnected normally (logout)."); break;
+                case 1001: System.out.println("User " + userId + " disconnected (browser/tab closed)."); break;
+                case 1011: System.out.println("User " + userId + " disconnected due to server error."); break;
+                default:   System.out.println("User " + userId + " disconnected. Reason: " + closeStatus);
+            }
         }
     }
-}
 
     @Override
     public boolean supportsPartialMessages() {
         return false;
     }
 
-    private void broadcastStatus(Long userId, boolean online) throws Exception {
-        Map<String, Object> status = new HashMap<>();
-        status.put("type", "status_update");
-        status.put("user_id", userId);
-        status.put("online_status", online);
-        String msg = mapper.writeValueAsString(status);
+    /** Broadcast user online/offline status */
+    private void broadcastStatus(Long userId, boolean online) {
+        statusUpdateQueue.offer(new StatusUpdate(userId, online));
+        broadcastExecutor.submit(this::processStatusUpdates);
+    }
 
-        for (WebSocketSession s : onlineUsers.values()) {
-            if (s.isOpen()) s.sendMessage(new TextMessage(msg));
+    private void processStatusUpdates() {
+        try {
+            StatusUpdate update;
+            while ((update = statusUpdateQueue.poll()) != null) {
+                Map<String, Object> status = new HashMap<>();
+                status.put("type", "status_update");
+                status.put("user_id", update.userId);
+                status.put("online_status", update.online);
+
+                User user = userRepository.findById(update.userId).orElse(null);
+                if (user != null) {
+                    status.put("username", user.getUsername());
+                }
+
+                String msg = mapper.writeValueAsString(status);
+                for (WebSocketSession s : onlineUsers.values()) {
+                    if (s.isOpen()) s.sendMessage(new TextMessage(msg));
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error processing status updates: " + e.getMessage());
+        }
+    }
+
+    private void broadcastToAll(Map<String, Object> payload, Long senderId) throws Exception {
+        String message = mapper.writeValueAsString(payload);
+        TextMessage textMessage = new TextMessage(message);
+        for (Map.Entry<Long, WebSocketSession> entry : onlineUsers.entrySet()) {
+            if (!entry.getKey().equals(senderId) && entry.getValue().isOpen()) {
+                entry.getValue().sendMessage(textMessage);
+            }
         }
     }
 
     public void disconnectUser(Long userId) throws Exception {
-         WebSocketSession session = onlineUsers.get(userId);
-         if (session != null && session.isOpen()) {
+        WebSocketSession session = onlineUsers.get(userId);
+        if (session != null && session.isOpen()) {
             session.close(CloseStatus.NORMAL);
         }
     }
 
+    public void forceOfflineStatus(Long userId) throws Exception {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null) {
+            user.setOnlineStatus(false);
+            userRepository.save(user);
+            broadcastStatus(userId, false);
+        }
+    }
+
+    /** Helper record for queued status updates */
+    private static class StatusUpdate {
+        final Long userId;
+        final boolean online;
+        StatusUpdate(Long userId, boolean online) {
+            this.userId = userId;
+            this.online = online;
+        }
+    }
 }
