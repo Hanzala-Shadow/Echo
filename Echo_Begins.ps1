@@ -14,5 +14,3 @@ if ($wifiIp) {
     Write-Output "No Wi-Fi IP detected."
 }
 
-# Run Docker Compose
-docker-compose up

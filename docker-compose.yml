@@ -34,10 +34,14 @@ services:
     restart: always
     environment:
       VITE_HOST_IP: ${HOST_IP}   # frontend also knows your LAN IP
+      CHOKIDAR_USEPOLLING: "true"  # for hot reload on Windows with WSL
     ports:
       - "5173:5173"
     depends_on:
       - backend
+    volumes:
+      - ./frontend:/app          # <-- HOT RELOAD FOR FRONTEND
+      - /app/node_modules       # <-- IGNORE LOCAL NODE_MODULES
 
 
   pgadmin:
