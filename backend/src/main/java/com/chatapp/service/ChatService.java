@@ -1,9 +1,11 @@
 package com.chatapp.service;
 
+import com.chatapp.model.Group;
 import com.chatapp.model.GroupMember;
 import com.chatapp.model.Message;
 import com.chatapp.model.MessageDelivery;
 import com.chatapp.model.MediaMessage;
+import com.chatapp.repository.GroupRepository;
 import com.chatapp.repository.GroupMemberRepository;
 import com.chatapp.repository.MessageDeliveryRepository;
 import com.chatapp.repository.MessageRepository;
@@ -40,6 +42,9 @@ public class ChatService {
 
     @Autowired
     private MediaMessageRepository mediaMessageRepository;
+
+    @Autowired
+    private GroupRepository groupRepository;
 
     @Autowired
     private ObjectMapper mapper;
@@ -135,6 +140,47 @@ public class ChatService {
         }
         return dtoList;
     }
+
+    // Leave Group for User
+@Transactional
+public void leaveGroup(Long userId, Long groupId) {
+    // Check membership
+    GroupMember membership = groupMemberRepository.findByGroupIdAndUserId(groupId, userId)
+            .orElseThrow(() -> new RuntimeException("User is not a member of this group"));
+
+    // Delete membership
+    groupMemberRepository.delete(membership);
+
+}
+
+
+    // Add to Group
+@Transactional
+public void addMemberToGroup(Long adminId, Long groupId, Long newUserId) {
+    // Fetch group
+    Group group = groupRepository.findById(groupId)
+            .orElseThrow(() -> new RuntimeException("Group not found"));
+
+    // Check admin
+    if (!group.getCreatedBy().equals(adminId)) {
+        throw new RuntimeException("Only the admin can add members");
+    }
+
+    // Check if already a member
+    boolean alreadyMember = groupMemberRepository.existsByGroupIdAndUserId(groupId, newUserId);
+    if (alreadyMember) {
+        throw new RuntimeException("User is already a member of the group");
+    }
+
+    // Add new member
+    GroupMember newMember = new GroupMember();
+    newMember.setGroupId(groupId);
+    newMember.setUserId(newUserId);
+    groupMemberRepository.save(newMember);
+
+}
+
+
 
     // -----------------------------
     // Helpers

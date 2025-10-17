@@ -9,11 +9,11 @@ import com.chatapp.repository.GroupMemberRepository;
 import com.chatapp.repository.GroupRepository;
 import com.chatapp.repository.MessageRepository;
 import com.chatapp.repository.UserRepository;
+import com.chatapp.service.ChatService;
 import com.chatapp.service.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,6 +40,47 @@ public class ChatController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private ChatService chatService;
+
+    // User leaves group
+    @DeleteMapping("group/{groupId}/leave")
+    public ResponseEntity<?> leaveGroup(
+            @PathVariable Long groupId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        try {
+            // Extract token from header
+            String token = authHeader.replace("Bearer ", "");
+            Long userId = jwtService.validateTokenAndGetUserId(token);
+
+            // Call ChatService
+            chatService.leaveGroup(userId, groupId);
+
+            return ResponseEntity.ok(Map.of("message", "Left group successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Admin adds a member
+    @PostMapping("group/{groupId}/add-member")
+    public ResponseEntity<?> addMember(
+            @PathVariable Long groupId,
+            @RequestParam Long adminId,
+            @RequestParam Long userId) {
+        try {
+            chatService.addMemberToGroup(adminId, groupId, userId);
+            return ResponseEntity.ok(Map.of("message", "Member added successfully"));
+        } catch (RuntimeException e) {
+            // Handles all RuntimeExceptions from service (already member, not admin, etc.)
+            return ResponseEntity.status(400).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            // Any other unexpected exceptions
+            return ResponseEntity.status(500).body(Map.of("error", "Internal server error"));
+        }
+    }
+
     // -----------------------------
     // Fetch message history
     // -----------------------------
@@ -48,8 +89,7 @@ public class ChatController {
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long groupId,
             @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(defaultValue = "0") int offset
-    ) {
+            @RequestParam(defaultValue = "0") int offset) {
         try {
             Long userId = extractUserIdFromHeader(authHeader);
 
@@ -68,8 +108,7 @@ public class ChatController {
 
             return ResponseEntity.ok(Map.of(
                     "group_id", groupId,
-                    "messages", dtoList
-            ));
+                    "messages", dtoList));
         } catch (Exception e) {
             e.printStackTrace();
             return errorResponse("Unauthorized or invalid token", 401);
@@ -82,8 +121,7 @@ public class ChatController {
     @PostMapping("/group/create")
     public ResponseEntity<?> createGroup(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody Map<String, Object> body
-    ) {
+            @RequestBody Map<String, Object> body) {
         try {
             Long creatorId = extractUserIdFromHeader(authHeader);
             String groupName = (String) body.getOrDefault("group_name", "New Group");
@@ -92,7 +130,8 @@ public class ChatController {
                     .map(o -> Long.valueOf(o.toString()))
                     .collect(Collectors.toList());
 
-            if (!memberIds.contains(creatorId)) memberIds.add(creatorId);
+            if (!memberIds.contains(creatorId))
+                memberIds.add(creatorId);
 
             // Check if this is a direct message (exactly 2 members)
             if (memberIds.size() == 2) {
@@ -101,7 +140,7 @@ public class ChatController {
                         .filter(id -> !id.equals(creatorId))
                         .findFirst()
                         .orElse(null);
-                
+
                 if (otherUserId != null) {
                     // Use synchronized method to create or get existing DM
                     Optional<Group> dmResult = createOrGetDM(creatorId, otherUserId, groupName);
@@ -110,8 +149,7 @@ public class ChatController {
                         return ResponseEntity.ok(Map.of(
                                 "group_id", group.getGroupId(),
                                 "group_name", group.getGroupName(),
-                                "member_ids", memberIds
-                        ));
+                                "member_ids", memberIds));
                     }
                 }
             }
@@ -134,8 +172,7 @@ public class ChatController {
             return ResponseEntity.ok(Map.of(
                     "group_id", group.getGroupId(),
                     "group_name", group.getGroupName(),
-                    "member_ids", memberIds
-            ));
+                    "member_ids", memberIds));
 
         } catch (Exception e) {
             return errorResponse("Unauthorized or invalid token", 401);
@@ -149,18 +186,18 @@ public class ChatController {
         List<Long> user1GroupIds = user1Memberships.stream()
                 .map(GroupMember::getGroupId)
                 .collect(Collectors.toList());
-        
+
         // Find all groups where user2 is a member
         List<GroupMember> user2Memberships = groupMemberRepository.findByUserId(user2Id);
         List<Long> user2GroupIds = user2Memberships.stream()
                 .map(GroupMember::getGroupId)
                 .collect(Collectors.toList());
-        
+
         // Find common groups
         List<Long> commonGroupIds = user1GroupIds.stream()
                 .filter(user2GroupIds::contains)
                 .collect(Collectors.toList());
-        
+
         // Check each common group to see if it's a DM (exactly 2 members)
         for (Long groupId : commonGroupIds) {
             int memberCount = groupMemberRepository.countByGroupId(groupId);
@@ -172,7 +209,7 @@ public class ChatController {
                 }
             }
         }
-        
+
         return Optional.empty();
     }
 
@@ -183,7 +220,7 @@ public class ChatController {
         if (existingDM.isPresent()) {
             return existingDM;
         }
-        
+
         // Create new DM
         Group group = new Group();
         group.setGroupName(groupName);
@@ -191,18 +228,18 @@ public class ChatController {
         group.setCreatedAt(LocalDateTime.now());
         group.setIsDirect(true);
         groupRepository.save(group);
-        
+
         // Add both users as members
         GroupMember gm1 = new GroupMember();
         gm1.setGroupId(group.getGroupId());
         gm1.setUserId(user1Id);
         groupMemberRepository.save(gm1);
-        
+
         GroupMember gm2 = new GroupMember();
         gm2.setGroupId(group.getGroupId());
         gm2.setUserId(user2Id);
         groupMemberRepository.save(gm2);
-        
+
         return Optional.of(group);
     }
 
@@ -234,7 +271,7 @@ public class ChatController {
                 groupMap.put("memberCount", memberCount);
                 return groupMap;
             }).collect(Collectors.toList());
-            
+
             System.out.println("Returning groups data: " + groupsWithMemberCount);
 
             return ResponseEntity.ok(groupsWithMemberCount);
@@ -251,16 +288,16 @@ public class ChatController {
     @GetMapping("/groups/{groupId}/members")
     public ResponseEntity<?> getGroupMembers(
             @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long groupId
-    ) {
+            @PathVariable Long groupId) {
         try {
             Long userId = extractUserIdFromHeader(authHeader);
 
             boolean member = groupMemberRepository.existsByGroupIdAndUserId(groupId, userId);
-            if (!member) return errorResponse("User not in group", 403);
+            if (!member)
+                return errorResponse("User not in group", 403);
 
             List<GroupMember> members = groupMemberRepository.findByGroupId(groupId);
-            
+
             // Create a list of member info including online status
             List<Map<String, Object>> memberInfo = new ArrayList<>();
             for (GroupMember gm : members) {
@@ -276,8 +313,7 @@ public class ChatController {
 
             return ResponseEntity.ok(Map.of(
                     "group_id", groupId,
-                    "members", memberInfo
-            ));
+                    "members", memberInfo));
         } catch (Exception e) {
             return errorResponse("Unauthorized or invalid token", 401);
         }
@@ -292,11 +328,11 @@ public class ChatController {
             System.out.println("Dashboard stats request received");
             Long userId = extractUserIdFromHeader(authHeader);
             System.out.println("User ID extracted: " + userId);
-            
+
             // Get total groups for the user (excluding groups with 2 or fewer members)
             List<GroupMember> memberships = groupMemberRepository.findByUserId(userId);
             int totalGroups = 0;
-            
+
             // Count only groups with more than 2 members (i.e., 3 or more members)
             for (GroupMember membership : memberships) {
                 Long groupId = membership.getGroupId();
@@ -306,26 +342,25 @@ public class ChatController {
                     totalGroups++;
                 }
             }
-            
+
             System.out.println("Total groups (with more than 2 members): " + totalGroups);
-            
+
             // Get total messages sent by the user
             int totalMessages = messageRepository.countBySenderId(userId);
             System.out.println("Total messages: " + totalMessages);
-            
+
             // Get online users (users with onlineStatus = true)
             List<User> onlineUsersList = userRepository.findAll().stream()
                     .filter(User::getOnlineStatus)
                     .collect(Collectors.toList());
             int onlineUsers = onlineUsersList.size();
             System.out.println("Online users: " + onlineUsers);
-            
+
             Map<String, Object> stats = Map.of(
                     "totalGroups", totalGroups,
                     "totalMessages", totalMessages,
-                    "onlineUsers", onlineUsers
-            );
-            
+                    "onlineUsers", onlineUsers);
+
             System.out.println("Returning stats: " + stats);
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
@@ -349,38 +384,35 @@ public class ChatController {
     private ResponseEntity<Map<String, Object>> errorResponse(String message, int code) {
         return ResponseEntity.status(code).body(Map.of(
                 "error", message,
-                "code", code
-        ));
+                "code", code));
     }
 
     private MessageDTO toDTO(Message m) {
-    Map<String, Object> media = null;
-    if (m.getMediaMessage() != null) {
-        media = Map.of(
-                "media_id", m.getMediaMessage().getMediaId(),
-                "file_name", m.getMediaMessage().getFileName(),
-                "file_type", m.getMediaMessage().getFileType(),
-                "file_size", m.getMediaMessage().getFileSize(),
-                "file_path", m.getMediaMessage().getFilePath(),
-                "uploaded_at", m.getMediaMessage().getUploadedAt()
-        );
+        Map<String, Object> media = null;
+        if (m.getMediaMessage() != null) {
+            media = Map.of(
+                    "media_id", m.getMediaMessage().getMediaId(),
+                    "file_name", m.getMediaMessage().getFileName(),
+                    "file_type", m.getMediaMessage().getFileType(),
+                    "file_size", m.getMediaMessage().getFileSize(),
+                    "file_path", m.getMediaMessage().getFilePath(),
+                    "uploaded_at", m.getMediaMessage().getUploadedAt());
+        }
+
+        // Fetch sender name from UserRepository
+        String senderName = userRepository.findById(m.getSenderId())
+                .map(User::getUsername)
+                .orElse("Unknown");
+
+        return new MessageDTO(
+                m.getMessageId(),
+                m.getSenderId(),
+                senderName,
+                m.getGroupId(),
+                m.getContent(),
+                m.getCreatedAt(),
+                media,
+                true);
     }
-
-    //  Fetch sender name from UserRepository
-    String senderName = userRepository.findById(m.getSenderId())
-            .map(User::getUsername)
-            .orElse("Unknown");
-
-    return new MessageDTO(
-            m.getMessageId(),
-            m.getSenderId(),
-            senderName,
-            m.getGroupId(),
-            m.getContent(),
-            m.getCreatedAt(),
-            media,
-            true
-    );
-}
 
 }
