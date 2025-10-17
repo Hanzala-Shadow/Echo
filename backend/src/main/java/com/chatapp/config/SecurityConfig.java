@@ -41,8 +41,8 @@ public class SecurityConfig {
     private String hostIp;
 
     public SecurityConfig(JwtService jwtService,
-                          UserRepository userRepository,
-                          SessionRepository sessionRepository) {
+            UserRepository userRepository,
+            SessionRepository sessionRepository) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
@@ -51,25 +51,24 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                    "/api/auth/register",
-                    "/api/auth/login",
-                    "/ws/**",
-                    "/network/qr",
-                    "/network/ip",
-                    "/api/mdns",
-                    "/api/users/usernames",
-                    "/api/users/search",
-                    "/api/health",
-                    "/api/test/**"
-                ).permitAll()
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(new JwtAuthFilter(jwtService, userRepository, sessionRepository),
-                             UsernamePasswordAuthenticationFilter.class);
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/api/auth/register",
+                                "/api/auth/login",
+                                "/ws/**",
+                                "/network/qr",
+                                "/network/ip",
+                                "/api/mdns",
+                                "/api/users/usernames",
+                                "/api/users/search",
+                                "/api/health",
+                                "/api/test/**")
+                        .permitAll()
+                        .anyRequest().authenticated())
+                .addFilterBefore(new JwtAuthFilter(jwtService, userRepository, sessionRepository),
+                        UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -81,16 +80,15 @@ public class SecurityConfig {
 
         // Allow all origins for development
         configuration.setAllowedOriginPatterns(Arrays.asList(
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-            "http://" + hostIp + ":*",
-            "http://*:5173"
-        ));
+                "http://localhost:*",
+                "http://127.0.0.1:*",
+                "http://" + hostIp + ":*",
+                "http://*:5173"));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
-        
+
         // Expose headers that frontend might need
         configuration.setExposedHeaders(Arrays.asList("Authorization", "Content-Type"));
 
@@ -98,7 +96,6 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-
 
     // ========================
     // JWT Authentication Filter
@@ -116,37 +113,37 @@ public class SecurityConfig {
 
         @Override
         protected void doFilterInternal(HttpServletRequest request,
-                                        HttpServletResponse response,
-                                        FilterChain filterChain) throws ServletException, IOException {
+                HttpServletResponse response,
+                FilterChain filterChain) throws ServletException, IOException {
             String requestURI = request.getRequestURI();
-            
+
             // Log the request URI for debugging
             System.out.println("JwtAuthFilter: Processing request for URI: " + requestURI);
-            
+
             // Define public endpoints that should bypass JWT authentication
             List<String> publicEndpoints = Arrays.asList(
-                "/api/auth/register",
-                "/api/auth/login",
-                "/ws/**",
-                "/network/qr",
-                "/network/ip",
-                "/api/mdns",
-                "/api/users/usernames",
-                "/api/users/search",
-                "/api/health"
-            );
-            
+                    "/api/auth/register",
+                    "/api/auth/login",
+                    "/ws/**",
+                    "/network/qr",
+                    "/network/ip",
+                    "/api/mdns",
+                    "/api/users/usernames",
+                    "/api/users/search",
+                    "/api/health");
+
             // Check if this is a public endpoint
             boolean isPublicEndpoint = false;
             for (String pattern : publicEndpoints) {
-                if (pattern.equals(requestURI) || 
-                    (pattern.endsWith("/**") && requestURI.startsWith(pattern.substring(0, pattern.length() - 3))) ||
-                    requestURI.startsWith("/api/auth/")) {
+                if (pattern.equals(requestURI) ||
+                        (pattern.endsWith("/**") && requestURI.startsWith(pattern.substring(0, pattern.length() - 3)))
+                        ||
+                        requestURI.startsWith("/api/auth/")) {
                     isPublicEndpoint = true;
                     break;
                 }
             }
-            
+
             // If it's a public endpoint, let it pass through without JWT validation
             if (isPublicEndpoint) {
                 System.out.println("JwtAuthFilter: Public endpoint, bypassing JWT validation");
@@ -156,35 +153,44 @@ public class SecurityConfig {
 
             // For non-public endpoints, check authentication
             String authHeader = request.getHeader("Authorization");
-            System.out.println("JwtAuthFilter: Auth header: " + authHeader);
+            String token = null;
 
+            // Try to extract from header first
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                String token = authHeader.substring(7);
+                token = authHeader.substring(7);
+                System.out.println("JwtAuthFilter: Found token in Authorization header");
+            } else if (request.getParameter("token") != null) {
+                token = request.getParameter("token");
+                System.out.println("JwtAuthFilter: Found token in query parameter");
+            }
+
+            System.out.println("JwtAuthFilter: Auth header: " + authHeader);
+            System.out.println("JwtAuthFilter: Final token used: " + token);
+
+            if (token != null) {
                 System.out.println("JwtAuthFilter: Processing token: " + token);
 
                 try {
                     // Extract email from token
                     String email = jwtService.extractEmail(token);
                     System.out.println("JwtAuthFilter: Extracted email: " + email);
-                    
+
                     // Find user by email
                     Optional<User> userOpt = userRepository.findByEmail(email);
-                    
+
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
-                        
+
                         // Validate token for this user
                         if (jwtService.validateToken(token, user)) {
-                            // Wrap user as Spring UserDetails with at least one role
-                            org.springframework.security.core.userdetails.UserDetails userDetails =
-                                    org.springframework.security.core.userdetails.User
-                                            .withUsername(user.getEmail())
-                                            .password("") // no need for real password, JWT already validated
-                                            .authorities("ROLE_USER") // or map roles from DB later
-                                            .build();
+                            org.springframework.security.core.userdetails.UserDetails userDetails = org.springframework.security.core.userdetails.User
+                                    .withUsername(user.getEmail())
+                                    .password("")
+                                    .authorities("ROLE_USER")
+                                    .build();
 
-                            UsernamePasswordAuthenticationToken authToken =
-                                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                                    userDetails, null, userDetails.getAuthorities());
 
                             SecurityContextHolder.getContext().setAuthentication(authToken);
                             System.out.println("JwtAuthFilter: Authentication successful, continuing filter chain");

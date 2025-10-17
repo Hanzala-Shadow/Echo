@@ -269,30 +269,92 @@ const DMContainer = () => {
 
   // Load messages for a DM (only once per DM)
   const loadDMMessages = useCallback(async (groupId) => {
+    console.log(`📥 [DM_CONTAINER] Loading messages for DM group ${groupId}`);
+    
     if (!groupId || !token) {
+      console.log('❌ [DM_CONTAINER] Cannot load messages: missing groupId or token');
       return;
     }
 
     // Check if we already loaded this DM
     if (loadedDMs.has(groupId)) {
+      console.log(`✅ [DM_CONTAINER] Messages already loaded for group ${groupId}`);
       return;
     }
 
     setLoading(true);
     try {
+      console.log(`📡 [DM_CONTAINER] Fetching message history for group ${groupId}`);
       const messageHistory = await ApiClient.chat.getGroupMessages(groupId);
+      console.log(`📥 [DM_CONTAINER] Fetched message history for group ${groupId}:`, messageHistory);
       
       let messagesArray = [];
       
       if (Array.isArray(messageHistory)) {
         messagesArray = messageHistory;
+        console.log(`📦 [DM_CONTAINER] Response is direct array, length: ${messagesArray.length}`);
       } else if (messageHistory && Array.isArray(messageHistory.messages)) {
         messagesArray = messageHistory.messages;
+        console.log(`📦 [DM_CONTAINER] Response has messages property, length: ${messagesArray.length}`);
       } else {
         messagesArray = messageHistory || [];
+        console.log(`📦 [DM_CONTAINER] Unknown response structure, using as-is, length: ${messagesArray.length}`);
       }
 
+      console.log(`🔄 [DM_CONTAINER] Transforming ${messagesArray.length} historical messages for group ${groupId}`);
+
       const transformedMessages = messagesArray.map((msg, index) => {
+        console.log(`🔄 [DM_CONTAINER] Processing message ${index + 1}:`, msg);
+        
+        // Extract media information properly
+        let media = null;
+        if (msg.media && typeof msg.media === 'object' && msg.media !== null) {
+          console.log(`📂 [DM_CONTAINER] Found nested media object in message ${index + 1}:`, msg.media);
+          // Handle nested media object
+          const mediaObj = msg.media;
+          const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId;
+          
+          console.log(`🆔 [DM_CONTAINER] Extracted media ID from message ${index + 1}:`, mediaId);
+          
+          // Only create media object if we have a valid mediaId
+          if (mediaId) {
+            media = {
+              media_id: mediaId,
+              id: mediaId,
+              mediaId: mediaId,
+              file_name: mediaObj.file_name || mediaObj.fileName,
+              fileName: mediaObj.file_name || mediaObj.fileName,
+              file_type: mediaObj.file_type || mediaObj.fileType,
+              fileType: mediaObj.file_type || mediaObj.fileType,
+              file_size: mediaObj.file_size || mediaObj.fileSize,
+              fileSize: mediaObj.file_size || msg.fileSize
+            };
+            console.log(`✅ [DM_CONTAINER] Created media object for message ${index + 1}:`, media);
+          } else {
+            console.log(`❌ [DM_CONTAINER] Media object found but no valid mediaId in message ${index + 1}`);
+          }
+        } else if (msg.media_id || msg.mediaId) {
+          console.log(`📄 [DM_CONTAINER] Found flat media properties in message ${index + 1}`);
+          // Handle flat media properties
+          const mediaId = msg.media_id || msg.mediaId;
+          if (mediaId) {
+            media = {
+              media_id: mediaId,
+              id: mediaId,
+              mediaId: mediaId,
+              file_name: msg.file_name || msg.fileName,
+              fileName: msg.file_name || msg.fileName,
+              file_type: msg.file_type || msg.fileType,
+              fileType: msg.file_type || msg.fileType,
+              file_size: msg.file_size || msg.fileSize,
+              fileSize: msg.file_size || msg.fileSize
+            };
+            console.log(`✅ [DM_CONTAINER] Created flat media object for message ${index + 1}:`, media);
+          }
+        } else {
+          console.log(`📝 [DM_CONTAINER] No media properties found in message ${index + 1}`);
+        }
+
         const transformed = {
           id: msg.messageId || msg.message_id || msg.id || `hist-${groupId}-${index}`,
           content: msg.content || msg.message || '',
@@ -302,24 +364,34 @@ const DMContainer = () => {
           type: 'text',
           groupId: groupId,
           isCurrentUser: (msg.senderId || msg.sender_id || msg.userId) === user?.userId,
-          status: 'delivered'
+          status: 'delivered',
+          // Add media if present
+          media: media
         };
         
+        console.log(`✅ [DM_CONTAINER] Transformed message ${index + 1}:`, transformed);
         return transformed;
       });
+
+      console.log(`✅ [DM_CONTAINER] Completed transformation of ${transformedMessages.length} historical messages for group ${groupId}`);
 
       // Add to local messages
       setLocalMessages(prev => {
         const filtered = prev.filter(msg => msg.groupId !== groupId);
         const updated = [...filtered, ...transformedMessages];
+        console.log(`💾 [DM_CONTAINER] Updated localMessages for group ${groupId}: ${prev.length} → ${updated.length}`);
         return updated;
       });
 
       // Mark this DM as loaded
-      setLoadedDMs(prev => new Set([...prev, groupId]));
+      setLoadedDMs(prev => {
+        const newSet = new Set([...prev, groupId]);
+        console.log(`✅ [DM_CONTAINER] Marked group ${groupId} as loaded, total loaded: ${newSet.size}`);
+        return newSet;
+      });
 
     } catch (error) {
-      console.error('Error fetching DM messages:', error);
+      console.error(`❌ [DM_CONTAINER] Error fetching DM messages for group ${groupId}:`, error);
       setError('Failed to load messages');
     } finally {
       setLoading(false);
@@ -428,8 +500,22 @@ const refreshDMs = async () => {
   };
 
   // Handle sending a message
-  const handleSendMessage = async (content) => {
-    if (!content.trim()) {
+  const handleSendMessage = async (messageData) => {
+    console.log('📤 [DM_CONTAINER] Sending message:', messageData);
+    
+    // Extract content and media from the messageData object
+    const content = messageData.content || "";
+    const media = messageData.media || null;
+    
+    // Check if we have either content or media (or both)
+    const hasContent = content && content.trim() !== '';
+    const hasMedia = media && Object.keys(media).length > 0;
+    
+    console.log('📊 [DM_CONTAINER] Message composition:', { hasContent, hasMedia, content, media });
+    
+    // Prevent sending if both content and media are empty
+    if (!hasContent && !hasMedia) {
+      console.log('❌ [DM_CONTAINER] Cannot send empty message (both content and media are empty)');
       return;
     }
 
@@ -441,7 +527,7 @@ const refreshDMs = async () => {
 
       // If we have pending DM info (navigated to a user but no group created yet)
       if (pendingDMInfo && !activeDM) {
-        console.log('🆕 Creating new DM for user:', pendingDMInfo);
+        console.log('🆕 [DM_CONTAINER] Creating new DM for user:', pendingDMInfo);
         
         try {
           // Create a new direct message group
@@ -450,7 +536,7 @@ const refreshDMs = async () => {
             [pendingDMInfo.targetUserId]
           );
           
-          console.log('✅ New DM group created:', newGroup);
+          console.log('✅ [DM_CONTAINER] New DM group created:', newGroup);
           
           // 🆕 FIX: Handle both response formats (group_id vs groupId)
           const newGroupId = newGroup.group_id || newGroup.groupId;
@@ -495,10 +581,10 @@ const refreshDMs = async () => {
           // Join the DM via WebSocket
           joinGroup(newGroupId);
           
-          console.log('✅ New DM setup complete, group ID:', targetGroupId);
+          console.log('✅ [DM_CONTAINER] New DM setup complete, group ID:', targetGroupId);
           
         } catch (error) {
-          console.error('❌ Error creating DM group:', error);
+          console.error('❌ [DM_CONTAINER] Error creating DM group:', error);
           setError('Failed to create conversation. Please try again.');
           setIsSending(false);
           return;
@@ -507,30 +593,41 @@ const refreshDMs = async () => {
       
       // Rest of your send message logic...
       if (targetGroupId) {
+        console.log('📤 [DM_CONTAINER] Preparing to send message to group:', targetGroupId);
+        
         // Your existing optimistic message code...
         const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const optimisticMessage = {
           id: tempId,
-          content: content.trim(),
+          content: hasContent ? content.trim() : '',
           senderId: user.userId,
           senderName: user.username || "You",
           timestamp: new Date(),
           type: 'text',
           groupId: targetGroupId,
           status: 'pending',
-          isCurrentUser: true
+          isCurrentUser: true,
+          media: hasMedia ? media : null
         };
 
+        console.log('📤 [DM_CONTAINER] Created optimistic message:', optimisticMessage);
         setLocalMessages(prev => [...prev, optimisticMessage]);
 
         // Send via WebSocket
+        console.log('📤 [DM_CONTAINER] Sending via WebSocket:', {
+          groupId: targetGroupId,
+          content: hasContent ? content.trim() : "",
+          media: hasMedia ? media : null
+        });
+        
         const success = sendMessage({
           groupId: targetGroupId,
-          content: content.trim(),
-          type: 'text'
+          content: hasContent ? content.trim() : "",
+          media: hasMedia ? media : null
         });
 
         if (!success) {
+          console.log('❌ [DM_CONTAINER] Failed to send message via WebSocket');
           setError('Failed to send message. Please try again.');
           setLocalMessages(prev => 
             prev.map(msg => 
@@ -538,7 +635,7 @@ const refreshDMs = async () => {
             )
           );
         } else {
-          console.log('✅ Message queued for sending to group:', targetGroupId);
+          console.log('✅ [DM_CONTAINER] Message queued for sending to group:', targetGroupId);
           sendWebSocketMessage({
             type: 'typing_stop',
             group_id: targetGroupId,
@@ -547,7 +644,7 @@ const refreshDMs = async () => {
         }
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ [DM_CONTAINER] Error sending message:', error);
       setError('Failed to send message: ' + error.message);
     } finally {
       setIsSending(false);

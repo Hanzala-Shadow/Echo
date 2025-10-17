@@ -162,6 +162,23 @@ class WebSocketService {
         this.handleEvent('typing', data);
         break;
         
+      // Handle media-related messages
+      case 'media_upload_start':
+        this.handleEvent('mediaUploadStart', data);
+        break;
+        
+      case 'media_upload_progress':
+        this.handleEvent('mediaUploadProgress', data);
+        break;
+        
+      case 'media_upload_complete':
+        this.handleEvent('mediaUploadComplete', data);
+        break;
+        
+      case 'media_upload_error':
+        this.handleEvent('mediaUploadError', data);
+        break;
+        
       default:
         console.log('Unknown message type:', messageType, data);
         this.handleEvent('unknown', data);
@@ -217,11 +234,22 @@ class WebSocketService {
    * @param {number} groupId - Group ID
    * @param {string} content - Message content
    * @param {number} userId - Sender user ID
+   * @param {Object} media - Optional media object
    * @returns {boolean} Success status
    */
-  sendChatMessage(groupId, content, userId) {
-    if (!groupId || !content?.trim()) {
-      console.error('Invalid message parameters');
+  sendChatMessage(groupId, content, userId, media = null) {
+    if (!groupId) {
+      console.error('Invalid group ID');
+      return false;
+    }
+
+    // Check if we have either content or media (or both)
+    const hasContent = content && content.trim() !== '';
+    const hasMedia = media && Object.keys(media).length > 0;
+    
+    // Prevent sending if both content and media are empty
+    if (!hasContent && !hasMedia) {
+      console.error('Cannot send empty message (both content and media are empty)');
       return false;
     }
 
@@ -229,9 +257,22 @@ class WebSocketService {
       type: 'message',
       group_id: groupId,
       sender_id: userId,
-      content: content.trim(),
       timestamp: new Date().toISOString()
     };
+
+    // Add content if present
+    if (hasContent) {
+      message.content = content.trim();
+    }
+
+    // Add media_id if present (ensuring compatibility with backend)
+    if (hasMedia) {
+      // Extract media_id from various possible formats
+      const mediaId = media.media_id || media.id || media.mediaId;
+      if (mediaId) {
+        message.media_id = mediaId;
+      }
+    }
 
     return this.sendMessage(message);
   }
@@ -297,6 +338,110 @@ class WebSocketService {
       type: isTyping ? 'typing_start' : 'typing_stop',
       group_id: groupId,
       user_id: userId,
+      timestamp: new Date().toISOString()
+    };
+
+    return this.sendMessage(message);
+  }
+
+  /**
+   * Send media upload start message
+   * @param {number} groupId - Group ID
+   * @param {number} userId - User ID
+   * @param {Object} fileInfo - File information
+   * @returns {boolean} Success status
+   */
+  sendMediaUploadStart(groupId, userId, fileInfo) {
+    if (!groupId || !fileInfo) {
+      console.error('Invalid parameters for media upload start');
+      return false;
+    }
+
+    const message = {
+      type: 'media_upload_start',
+      group_id: groupId,
+      sender_id: userId,
+      file_name: fileInfo.name,
+      file_size: fileInfo.size,
+      file_type: fileInfo.type,
+      timestamp: new Date().toISOString()
+    };
+
+    return this.sendMessage(message);
+  }
+
+  /**
+   * Send media upload progress message
+   * @param {number} groupId - Group ID
+   * @param {number} userId - User ID
+   * @param {string} uploadId - Upload ID
+   * @param {number} progress - Upload progress (0-100)
+   * @returns {boolean} Success status
+   */
+  sendMediaUploadProgress(groupId, userId, uploadId, progress) {
+    if (!groupId || !uploadId) {
+      console.error('Invalid parameters for media upload progress');
+      return false;
+    }
+
+    const message = {
+      type: 'media_upload_progress',
+      group_id: groupId,
+      sender_id: userId,
+      upload_id: uploadId,
+      progress: progress,
+      timestamp: new Date().toISOString()
+    };
+
+    return this.sendMessage(message);
+  }
+
+  /**
+   * Send media upload complete message
+   * @param {number} groupId - Group ID
+   * @param {number} userId - User ID
+   * @param {string} uploadId - Upload ID
+   * @param {Object} media - Media object returned from backend
+   * @returns {boolean} Success status
+   */
+  sendMediaUploadComplete(groupId, userId, uploadId, media) {
+    if (!groupId || !uploadId || !media) {
+      console.error('Invalid parameters for media upload complete');
+      return false;
+    }
+
+    const message = {
+      type: 'media_upload_complete',
+      group_id: groupId,
+      sender_id: userId,
+      upload_id: uploadId,
+      media: media,
+      timestamp: new Date().toISOString()
+    };
+
+    return this.sendMessage(message);
+  }
+
+  /**
+   * Send media upload error message
+   * @param {number} groupId - Group ID
+   * @param {number} userId - User ID
+   * @param {string} uploadId - Upload ID
+   * @param {string} error - Error message
+   * @returns {boolean} Success status
+   */
+  sendMediaUploadError(groupId, userId, uploadId, error) {
+    if (!groupId || !uploadId || !error) {
+      console.error('Invalid parameters for media upload error');
+      return false;
+    }
+
+    const message = {
+      type: 'media_upload_error',
+      group_id: groupId,
+      sender_id: userId,
+      upload_id: uploadId,
+      error: error,
       timestamp: new Date().toISOString()
     };
 
