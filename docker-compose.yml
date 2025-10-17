@@ -20,7 +20,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/chatappdb
       SPRING_DATASOURCE_USERNAME: chatuser
       SPRING_DATASOURCE_PASSWORD: 12345678
-      HOST_IP: ${HOST_IP}                   # inject Wi-Fi IP dynamically
+      HOST_IP: ${HOST_IP}                  # inject Wi-Fi IP dynamically
     ports:
       - "8080:8080"
     depends_on:

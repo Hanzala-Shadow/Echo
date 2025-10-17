@@ -319,43 +319,97 @@
 
     // Load messages for a group (only once per group)
     const loadGroupMessages = useCallback(async (groupId) => {
+      console.log(`📥 [CHAT_CONTAINER] Loading messages for group ${groupId}`);
+      
       if (!groupId || !token) {
-        console.log('⏸️ Cannot load messages: missing groupId or token');
+        console.log('❌ [CHAT_CONTAINER] Cannot load messages: missing groupId or token');
         return;
       }
 
       // Check if we already loaded this group
       if (loadedGroups.has(groupId)) {
-        console.log('✅ Messages already loaded for group:', groupId);
+        console.log(`✅ [CHAT_CONTAINER] Messages already loaded for group ${groupId}`);
         return;
       }
 
       setLoading(true);
       try {
-        console.log('📥 Fetching message history for group:', groupId);
+        console.log(`📡 [CHAT_CONTAINER] Fetching message history for group ${groupId}`);
         const messageHistory = await ApiClient.chat.getGroupMessages(groupId);
-        console.log('✅ Fetched message history:', messageHistory);
+        console.log(`📥 [CHAT_CONTAINER] Fetched message history for group ${groupId}:`, messageHistory);
         
         let messagesArray = [];
         
         if (Array.isArray(messageHistory)) {
           messagesArray = messageHistory;
-          console.log('📦 Response is direct array');
+          console.log(`📦 [CHAT_CONTAINER] Response is direct array, length: ${messagesArray.length}`);
         } else if (messageHistory && Array.isArray(messageHistory.messages)) {
           messagesArray = messageHistory.messages;
-          console.log('📦 Response has messages property');
+          console.log(`📦 [CHAT_CONTAINER] Response has messages property, length: ${messagesArray.length}`);
         } else if (messageHistory && messageHistory.content) {
           // If response uses content property (common in paginated responses)
           messagesArray = messageHistory.content;
-          console.log('📦 Response has content property');
+          console.log(`📦 [CHAT_CONTAINER] Response has content property, length: ${messagesArray.length}`);
         } else {
-          console.log('❓ Unknown response structure, trying to extract messages');
+          console.log('❓ [CHAT_CONTAINER] Unknown response structure, trying to extract messages');
           messagesArray = messageHistory || [];
+          console.log(`📦 [CHAT_CONTAINER] Unknown response structure, using as-is, length: ${messagesArray.length}`);
         }
 
-        console.log('✅ Raw messages array length:', messagesArray.length);
+        console.log(`🔄 [CHAT_CONTAINER] Transforming ${messagesArray.length} historical messages for group ${groupId}`);
 
         const transformedMessages = messagesArray.map((msg, index) => {
+          console.log(`🔄 [CHAT_CONTAINER] Processing message ${index + 1}:`, msg);
+          
+          // Extract media information properly
+          let media = null;
+          if (msg.media && typeof msg.media === 'object' && msg.media !== null) {
+            console.log(`📂 [CHAT_CONTAINER] Found nested media object in message ${index + 1}:`, msg.media);
+            // Handle nested media object
+            const mediaObj = msg.media;
+            const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId;
+            
+            console.log(`🆔 [CHAT_CONTAINER] Extracted media ID from message ${index + 1}:`, mediaId);
+            
+            // Only create media object if we have a valid mediaId
+            if (mediaId) {
+              media = {
+                media_id: mediaId,
+                id: mediaId,
+                mediaId: mediaId,
+                file_name: mediaObj.file_name || mediaObj.fileName,
+                fileName: mediaObj.file_name || mediaObj.fileName,
+                file_type: mediaObj.file_type || mediaObj.fileType,
+                fileType: mediaObj.file_type || mediaObj.fileType,
+                file_size: mediaObj.file_size || mediaObj.fileSize,
+                fileSize: mediaObj.file_size || mediaObj.fileSize
+              };
+              console.log(`✅ [CHAT_CONTAINER] Created media object for message ${index + 1}:`, media);
+            } else {
+              console.log(`❌ [CHAT_CONTAINER] Media object found but no valid mediaId in message ${index + 1}`);
+            }
+          } else if (msg.media_id || msg.mediaId) {
+            console.log(`📄 [CHAT_CONTAINER] Found flat media properties in message ${index + 1}`);
+            // Handle flat media properties
+            const mediaId = msg.media_id || msg.mediaId;
+            if (mediaId) {
+              media = {
+                media_id: mediaId,
+                id: mediaId,
+                mediaId: mediaId,
+                file_name: msg.file_name || msg.fileName,
+                fileName: msg.file_name || msg.fileName,
+                file_type: msg.file_type || msg.fileType,
+                fileType: msg.file_type || msg.fileType,
+                file_size: msg.file_size || msg.fileSize,
+                fileSize: msg.file_size || msg.fileSize
+              };
+              console.log(`✅ [CHAT_CONTAINER] Created flat media object for message ${index + 1}:`, media);
+            }
+          } else {
+            console.log(`📝 [CHAT_CONTAINER] No media properties found in message ${index + 1}`);
+          }
+
           const transformed = {
             id: msg.messageId || msg.message_id || msg.id || `hist-${groupId}-${index}`,
             content: msg.content || msg.message || '',
@@ -365,29 +419,35 @@
             type: 'text',
             groupId: groupId, // ALWAYS use the groupId parameter
             isCurrentUser: (msg.senderId || msg.sender_id || msg.userId) === user?.userId,
-            status: 'delivered'
+            status: 'delivered',
+            // Add media if present
+            media: media
           };
           
-          console.log(`🔄 Transformed message ${index + 1}:`, transformed);
+          console.log(`✅ [CHAT_CONTAINER] Transformed message ${index + 1}:`, transformed);
           return transformed;
         });
 
-        console.log(`✅ Transformed ${transformedMessages.length} historical messages for group ${groupId}`);
+        console.log(`✅ [CHAT_CONTAINER] Completed transformation of ${transformedMessages.length} historical messages for group ${groupId}`);
 
         // Add to local messages
         setLocalMessages(prev => {
           const filtered = prev.filter(msg => msg.groupId !== groupId);
           const updated = [...filtered, ...transformedMessages];
-          console.log(`💾 Updated localMessages: ${prev.length} → ${updated.length}`);
-          console.log(`💾 Messages for group ${groupId} in state:`, updated.filter(m => m.groupId === groupId).length);
+          console.log(`💾 [CHAT_CONTAINER] Updated localMessages for group ${groupId}: ${prev.length} → ${updated.length}`);
+          console.log(`💾 [CHAT_CONTAINER] Messages for group ${groupId} in state:`, updated.filter(m => m.groupId === groupId).length);
           return updated;
         });
 
         // Mark this group as loaded
-        setLoadedGroups(prev => new Set([...prev, groupId]));
+        setLoadedGroups(prev => {
+          const newSet = new Set([...prev, groupId]);
+          console.log(`✅ [CHAT_CONTAINER] Marked group ${groupId} as loaded, total loaded: ${newSet.size}`);
+          return newSet;
+        });
 
       } catch (error) {
-        console.error('❌ Error fetching group messages:', error);
+        console.error(`❌ [CHAT_CONTAINER] Error fetching group messages for group ${groupId}:`, error);
       } finally {
         setLoading(false);
       }
@@ -424,28 +484,39 @@
     };
 
     // Handle sending a message
-    // Handle sending a message
-    const handleSendMessage = (content) => {
-      if (!activeGroup || !content.trim()) {
-        console.log('⚠️ Cannot send message: no active group or empty content');
+    const handleSendMessage = ({ content, media }) => {
+      if (!activeGroup) {
+        console.log('⚠️ Cannot send message: no active group');
+        return;
+      }
+
+      // Check if we have either content or media (or both)
+      const hasContent = content && content.trim() !== '';
+      const hasMedia = media && Object.keys(media).length > 0;
+      
+      // Prevent sending if both content and media are empty
+      if (!hasContent && !hasMedia) {
+        console.log('⚠️ Cannot send empty message (both content and media are empty)');
         return;
       }
 
       console.log('📤 Sending message to group:', activeGroup.id);
       console.log('📤 Message content:', content);
+      console.log('📤 Message media:', media);
 
       // 🆕 ADD OPTIMISTIC MESSAGE TO LOCAL STATE
       const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const optimisticMessage = {
         id: tempId,
-        content: content.trim(),
+        content: hasContent ? content.trim() : '',
         senderId: user.userId,
         senderName: user.username || "You",
         timestamp: new Date(),
         type: 'text',
         groupId: activeGroup.id,
         status: 'pending',
-        isCurrentUser: true
+        isCurrentUser: true,
+        media: hasMedia ? media : null
       };
 
       setLocalMessages(prev => [...prev, optimisticMessage]);
@@ -453,8 +524,8 @@
       // Send via WebSocket
       const success = sendMessage({
         groupId: activeGroup.id,
-        content: content.trim(),
-        type: 'text'
+        content: hasContent ? content.trim() : "",
+        media: hasMedia ? media : null
       });
 
       if (success) {

@@ -47,7 +47,8 @@ export const AuthProvider = ({ children }) => {
     leaveGroup,
     sendTypingIndicator,
     disconnect,
-    showNotification // Add showNotification from useWebSocket
+    showNotification, // Add showNotification from useWebSocket
+    uploadMedia // Add uploadMedia from useWebSocket
   } = useWebSocket(user?.userId, user?.token);
 
   const getApiBaseUrl = () => {
@@ -220,7 +221,8 @@ export const AuthProvider = ({ children }) => {
     leaveGroup,
     sendTypingIndicator,
     apiBaseUrl,
-    showNotification // Expose the showNotification function
+    showNotification, // Expose the showNotification function
+    uploadMedia // Expose the uploadMedia function
   }), [
     user, 
     loading, 
@@ -235,7 +237,8 @@ export const AuthProvider = ({ children }) => {
     leaveGroup,
     sendTypingIndicator,
     apiBaseUrl,
-    showNotification
+    showNotification,
+    uploadMedia
   ]);
 
   console.log('AuthProvider - providing context value:', value);
