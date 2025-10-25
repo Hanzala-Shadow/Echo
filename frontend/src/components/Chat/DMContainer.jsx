@@ -7,6 +7,16 @@ import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import ChatHeader from './ChatHeader';
 import DMSidebar from './DMSidebar';
+import {
+  generateX25519Keypair,
+  deriveX25519SharedSecret,
+  hkdfSha256,
+  uint8ToBase64,
+  aesGcmEncryptRaw,
+  getRandomBytes,
+  base64ToUint8
+} from "../../utils/cryptoUtils";
+
 
 const DMContainer = () => {
   const location = useLocation();
@@ -499,157 +509,173 @@ const refreshDMs = async () => {
     }
   };
 
-  // Handle sending a message
-  const handleSendMessage = async (messageData) => {
-    console.log('📤 [DM_CONTAINER] Sending message:', messageData);
-    
-    // Extract content and media from the messageData object
-    const content = messageData.content || "";
-    const media = messageData.media || null;
-    
-    // Check if we have either content or media (or both)
-    const hasContent = content && content.trim() !== '';
-    const hasMedia = media && Object.keys(media).length > 0;
-    
-    console.log('📊 [DM_CONTAINER] Message composition:', { hasContent, hasMedia, content, media });
-    
-    // Prevent sending if both content and media are empty
-    if (!hasContent && !hasMedia) {
-      console.log('❌ [DM_CONTAINER] Cannot send empty message (both content and media are empty)');
-      return;
-    }
+ // =======================
+// 🧠 HANDLE SEND MESSAGE
+// =======================
+const handleSendMessage = async (messageData) => {
+  console.log('📤 [DM_CONTAINER] Sending message:', messageData);
 
-    setIsSending(true);
-    setError(null);
+  const content = messageData.content || "";
+  const media = messageData.media || null;
+  const hasContent = content && content.trim() !== '';
+  const hasMedia = media && Object.keys(media).length > 0;
 
-    try {
-      let targetGroupId = activeDM?.id;
+  if (!hasContent && !hasMedia) {
+    console.log('❌ [DM_CONTAINER] Cannot send empty message.');
+    return;
+  }
 
-      // If we have pending DM info (navigated to a user but no group created yet)
-      if (pendingDMInfo && !activeDM) {
-        console.log('🆕 [DM_CONTAINER] Creating new DM for user:', pendingDMInfo);
-        
-        try {
-          // Create a new direct message group
-          const newGroup = await ApiClient.chat.createGroup(
-            `DM with ${pendingDMInfo.username}`, 
-            [pendingDMInfo.targetUserId]
-          );
-          
-          console.log('✅ [DM_CONTAINER] New DM group created:', newGroup);
-          
-          // 🆕 FIX: Handle both response formats (group_id vs groupId)
-          const newGroupId = newGroup.group_id || newGroup.groupId;
-          
-          if (!newGroupId) {
-            throw new Error('No group ID returned from server');
+  setIsSending(true);
+  setError(null);
+
+  try {
+    let targetGroupId = activeDM?.id;
+
+    // 🆕 If DM doesn’t exist, create it + generate & post keys
+    if (pendingDMInfo && !activeDM) {
+      console.log('🆕 [DM_CONTAINER] Creating new encrypted DM for user:', pendingDMInfo);
+
+      try {
+        // 1️⃣ Define members
+        const memberIds = [pendingDMInfo.targetUserId, user.userId];
+        console.log('👥 [DM_CONTAINER] Member IDs for DM:', memberIds);
+
+        // 2️⃣ Create the group via backend
+        const groupResponse = await ApiClient.chat.createGroup(
+          `DM with ${pendingDMInfo.username}`,
+          [pendingDMInfo.targetUserId]
+        );
+        console.log('✅ [DM_CONTAINER] Created DM group:', groupResponse);
+
+        const groupId = groupResponse.group_id || groupResponse.groupId;
+        if (!groupId) throw new Error("Invalid groupId in response");
+
+        // 3️⃣ Generate group key and ephemeral X25519 keypair
+        const groupKey = getRandomBytes(32);
+        const { publicKey: ephPub, secretKey: ephPriv } = await generateX25519Keypair();
+        console.log('🔑 [DM_CONTAINER] Generated group key + ephemeral keypair');
+
+        // 4️⃣ Upload group public key
+        await ApiClient.keys.uploadGroupPublicKey({
+          groupId,
+          groupPublicKey: uint8ToBase64(ephPub)
+        });
+        console.log('✅ [DM_CONTAINER] Uploaded group public key');
+
+        // 5️⃣ For each member, fetch their public key and upload wrapped group key
+        for (const userId of memberIds) {
+          try {
+            console.log(`🔄 [DM_CONTAINER] Fetching public key for user ${userId}`);
+            const userKeyResp = await ApiClient.keys.getUserKeys(userId);
+            const pubBase64 = userKeyResp.publicKey || userKeyResp.public_key || userKeyResp.publicKeyBase64;
+            const memberPub = base64ToUint8(pubBase64);
+
+            // Derive shared secret
+            const shared = deriveX25519SharedSecret(ephPriv, memberPub);
+            const aesWrapKey = await hkdfSha256(shared, "chatapp:wrap:groupkey", 32);
+
+            // Encrypt the group key for this user
+            const { iv, ciphertext } = await aesGcmEncryptRaw(aesWrapKey, groupKey);
+            const wrapped = `${uint8ToBase64(iv)}:${uint8ToBase64(ciphertext)}`;
+
+            await ApiClient.keys.uploadGroupMemberKey({
+              groupId,
+              userId,
+              encryptedGroupPrivateKey: wrapped,
+              nonce: uint8ToBase64(iv)
+            });
+
+            console.log(`✅ [DM_CONTAINER] Uploaded wrapped group key for user ${userId}`);
+          } catch (err) {
+            console.error(`❌ [DM_CONTAINER] Failed to wrap/upload key for user ${userId}:`, err);
           }
-          
-          // Create a DM object for this new group
-          const newDM = {
-            id: newGroupId,
-            name: `DM with ${pendingDMInfo.username}`,
-            isDirect: true,
-            memberCount: 2,
-            otherUser: {
-              userId: pendingDMInfo.targetUserId,
-              username: pendingDMInfo.username
-            }
-          };
-          
-          // Get the target user details
-          const userDetails = await ApiClient.users.getProfile(pendingDMInfo.targetUserId);
-          
-          // 🆕 FIX: Update state immediately and ensure DM is added to list
-          setActiveDM(newDM);
-          setTargetUser(userDetails);
-          setPendingDMInfo(null);
-          
-          // 🆕 FIX: Use functional update to ensure we have latest state
-          setDMs(prev => {
-            // Check if DM already exists to avoid duplicates
-            const exists = prev.some(dm => dm.id === newGroupId);
-            if (exists) {
-              return prev;
-            }
-            return [...prev, newDM];
-          });
-          
-          // Set the target group ID for the new DM
-          targetGroupId = newGroupId;
-          
-          // Join the DM via WebSocket
-          joinGroup(newGroupId);
-          
-          console.log('✅ [DM_CONTAINER] New DM setup complete, group ID:', targetGroupId);
-          
-        } catch (error) {
-          console.error('❌ [DM_CONTAINER] Error creating DM group:', error);
-          setError('Failed to create conversation. Please try again.');
-          setIsSending(false);
-          return;
         }
-      } 
-      
-      // Rest of your send message logic...
-      if (targetGroupId) {
-        console.log('📤 [DM_CONTAINER] Preparing to send message to group:', targetGroupId);
-        
-        // Your existing optimistic message code...
-        const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const optimisticMessage = {
-          id: tempId,
-          content: hasContent ? content.trim() : '',
-          senderId: user.userId,
-          senderName: user.username || "You",
-          timestamp: new Date(),
-          type: 'text',
-          groupId: targetGroupId,
-          status: 'pending',
-          isCurrentUser: true,
-          media: hasMedia ? media : null
+
+        console.log('🎉 [DM_CONTAINER] DM group + key setup complete');
+
+        // 6️⃣ Create new DM object
+        const newDM = {
+          id: groupId,
+          name: `DM with ${pendingDMInfo.username}`,
+          isDirect: true,
+          memberCount: 2,
+          otherUser: {
+            userId: pendingDMInfo.targetUserId,
+            username: pendingDMInfo.username
+          }
         };
 
-        console.log('📤 [DM_CONTAINER] Created optimistic message:', optimisticMessage);
-        setLocalMessages(prev => [...prev, optimisticMessage]);
+        const userDetails = await ApiClient.users.getProfile(pendingDMInfo.targetUserId);
+        setActiveDM(newDM);
+        setTargetUser(userDetails);
+        setPendingDMInfo(null);
 
-        // Send via WebSocket
-        console.log('📤 [DM_CONTAINER] Sending via WebSocket:', {
-          groupId: targetGroupId,
-          content: hasContent ? content.trim() : "",
-          media: hasMedia ? media : null
-        });
-        
-        const success = sendMessage({
-          groupId: targetGroupId,
-          content: hasContent ? content.trim() : "",
-          media: hasMedia ? media : null
+        setDMs(prev => {
+          const exists = prev.some(dm => dm.id === groupId);
+          return exists ? prev : [...prev, newDM];
         });
 
-        if (!success) {
-          console.log('❌ [DM_CONTAINER] Failed to send message via WebSocket');
-          setError('Failed to send message. Please try again.');
-          setLocalMessages(prev => 
-            prev.map(msg => 
-              msg.id === tempId ? {...msg, status: 'failed'} : msg
-            )
-          );
-        } else {
-          console.log('✅ [DM_CONTAINER] Message queued for sending to group:', targetGroupId);
-          sendWebSocketMessage({
-            type: 'typing_stop',
-            group_id: targetGroupId,
-            user_id: user?.userId
-          });
-        }
+        targetGroupId = groupId;
+        joinGroup(groupId);
+        console.log('✅ [DM_CONTAINER] Joined new DM group:', groupId);
+
+      } catch (err) {
+        console.error('❌ [DM_CONTAINER] Error creating DM group with keys:', err);
+        setError('Failed to create encrypted DM.');
+        setIsSending(false);
+        return;
       }
-    } catch (error) {
-      console.error('❌ [DM_CONTAINER] Error sending message:', error);
-      setError('Failed to send message: ' + error.message);
-    } finally {
-      setIsSending(false);
     }
-  };
+
+    // 📨 Sending message once DM exists
+    if (targetGroupId) {
+      console.log('📤 [DM_CONTAINER] Sending message to group:', targetGroupId);
+
+      const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const optimisticMessage = {
+        id: tempId,
+        content: hasContent ? content.trim() : '',
+        senderId: user.userId,
+        senderName: user.username || "You",
+        timestamp: new Date(),
+        type: 'text',
+        groupId: targetGroupId,
+        status: 'pending',
+        isCurrentUser: true,
+        media: hasMedia ? media : null
+      };
+
+      setLocalMessages(prev => [...prev, optimisticMessage]);
+
+      const success = sendMessage({
+        groupId: targetGroupId,
+        content: hasContent ? content.trim() : "",
+        media: hasMedia ? media : null
+      });
+
+      if (!success) {
+        console.log('❌ [DM_CONTAINER] WebSocket send failed');
+        setError('Failed to send message.');
+        setLocalMessages(prev =>
+          prev.map(msg => (msg.id === tempId ? { ...msg, status: 'failed' } : msg))
+        );
+      } else {
+        console.log('✅ [DM_CONTAINER] Message queued for send:', targetGroupId);
+        sendWebSocketMessage({
+          type: 'typing_stop',
+          group_id: targetGroupId,
+          user_id: user?.userId
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ [DM_CONTAINER] Error sending message:', error);
+    setError('Failed to send message: ' + error.message);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   // Handle typing indicator with debouncing
   const handleTyping = useCallback((isTyping) => {

@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+import { encryptMessage, decryptMessage } from "../utils/cryptoUtils";
+import { encryptFile, base64ToUint8 } from "../utils/cryptoUtils";
+import * as keyCache from "../services/keyCache";
+import * as groupKeyService from "../services/groupKeyService";
+
 const useWebSocket = (userId, token) => {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -59,7 +64,7 @@ const useWebSocket = (userId, token) => {
     }
   }, []);
 
-  const handleIncomingMessage = useCallback((data) => {
+  const handleIncomingMessage = useCallback(async(data) => {
     console.log('📩 [WEBSOCKET] RAW INCOMING MESSAGE DATA:', data);
     console.log('📩 [WEBSOCKET] Handling incoming WebSocket message:', JSON.stringify(data, null, 2));
 
@@ -216,20 +221,55 @@ const useWebSocket = (userId, token) => {
           console.log('📝 [WEBSOCKET] No media properties found in any format, treating as text message');
         }
       }
+let decryptedContent = data.content || data.message || '';
 
-      const newMessage = {
-        id: messageId,
-        content: data.content || data.message || '',
-        senderId: data.sender_id || data.senderId || data.userId,
-        senderName: data.sender_name || data.senderName || data.username || `User ${data.sender_id || data.senderId}`,
-        timestamp: new Date(data.created_at || data.createdAt || data.timestamp || Date.now()),
-        type: 'text',
-        groupId: data.group_id || data.groupId,
-        status: 'delivered',
-        isCurrentUser: (data.sender_id || data.senderId) === userId,
-        // Add media if present
-        media: media
-      };
+try {
+  // 1️⃣ Get group key (await it)
+  let groupKey = await keyCache.getGroupKey(data.group_id || data.groupId);
+
+  // 2️⃣ If not cached, fetch & unwrap using CURRENT user's private key
+  if (!groupKey) {
+    console.log(`⚠️ Group key not found in cache for group ${data.group_id || data.groupId}`);
+    const userPrivateKey = await keyCache.getUserPrivateKey();
+    
+    if (userPrivateKey) {
+      console.log(`🔑 Fetching group key for current user (${userId})`);
+      groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
+        data.group_id || data.groupId,
+        userId,  // ✅ ALWAYS use current user's ID
+        userPrivateKey
+      );
+      
+      if (groupKey) {
+        await keyCache.setGroupKey(data.group_id || data.groupId, groupKey);
+        console.log(`✅ Group key cached for group ${data.group_id || data.groupId}`);
+      }
+    }
+  }
+
+  // 3️⃣ Decrypt if group key exists and message has content
+  if (groupKey && data.content) {
+    const encryptedPayload = JSON.parse(data.content); // { iv, ciphertext }
+    decryptedContent = await decryptMessage(encryptedPayload, groupKey);
+    console.log('✅ Message decrypted successfully');
+  }
+} catch (err) {
+  console.error('❌ [WEBSOCKET] Failed to decrypt message:', err);
+  decryptedContent = '[Encrypted message - decryption failed]';
+}
+const newMessage = {
+  id: messageId,
+  content: decryptedContent,
+  senderId: data.sender_id || data.senderId || data.userId,
+  senderName: data.sender_name || data.senderName || data.username || `User ${data.sender_id || data.senderId}`,
+  timestamp: new Date(data.created_at || data.createdAt || data.timestamp || Date.now()),
+  type: 'text',
+  groupId: data.group_id || data.groupId,
+  status: 'delivered',
+  isCurrentUser: (data.sender_id || data.senderId) === userId,
+  media: media
+};
+
 
       console.log('📤 [WEBSOCKET] Final message object to be added:', newMessage);
       console.log('📊 [WEBSOCKET] Message has media:', !!newMessage.media);
@@ -557,63 +597,74 @@ const useWebSocket = (userId, token) => {
     processedMessageIds.current.clear();
   }, []);
 
-  const sendMessage = useCallback((message) => {
-    console.log('📤 [WEBSOCKET] Preparing to send message:', message);
-    
-    // Allow typing indicators without content
-    if (message.type === 'typing_start' || message.type === 'typing_stop') {
-      console.log('📤 [WEBSOCKET] Preparing to send typing indicator to group:', message.group_id);
-      return sendWebSocketMessage(message);
-    }
+const sendMessage = useCallback(async (message) => {
+  console.log('📤 [WEBSOCKET] Preparing to send message:', message);
 
-    // Check if we have either content or media (or both)
-    const hasContent = message.content && message.content.trim() !== '';
-    const hasMedia = message.media && Object.keys(message.media).length > 0;
-    
-    // Prevent sending if both content and media are empty
-    if (!hasContent && !hasMedia) {
-      console.error('❌ [WEBSOCKET] Cannot send empty message (both content and media are empty)');
-      return false;
-    }
+  const hasContent = message.content && message.content.trim() !== '';
+  const hasMedia = message.media && Object.keys(message.media).length > 0;
 
-    if (!message.groupId) {
-      console.error('❌ [WEBSOCKET] Invalid message format:', message);
-      return false;
-    }
-    console.log('📤 [WEBSOCKET] Preparing to send message to group:', message.groupId);
+  if (!hasContent && !hasMedia) {
+    console.error('❌ [WEBSOCKET] Cannot send empty message');
+    return false;
+  }
 
-    const messageData = {
-      type: 'message',
-      sender_id: userId,
-      group_id: message.groupId,
-      timestamp: new Date().toISOString()
-    };
+  /// 🔐 Encrypt message content if present
+let encryptedContent = message.content;
+if (hasContent) {
+  let groupKey = await keyCache.getGroupKey(message.groupId);
 
-    // Add content if present
-    if (hasContent) {
-      messageData.content = message.content.trim();
-    }
-
-    // Add media_id if present (ensuring compatibility with backend)
-    if (hasMedia) {
-      console.log('📎 [WEBSOCKET] Adding media to message:', message.media);
-      // Extract media_id from various possible formats to ensure backend compatibility
-      const mediaId = message.media.media_id || message.media.id || message.media.mediaId;
-      if (mediaId) {
-        messageData.media_id = mediaId;
-        console.log('📎 [WEBSOCKET] Added media_id for backend:', messageData.media_id);
-      } else {
-        // If we have a media object but no recognizable ID, send the whole object
-        messageData.media = message.media;
-        console.log('📎 [WEBSOCKET] Added media object:', messageData.media);
+  if (!groupKey) {
+    console.warn(`⚠️ Group key not found in cache. Fetching from server for group ${message.groupId}...`);
+    try {
+      const userPrivateKey = await keyCache.getUserPrivateKey();
+      if (!userPrivateKey) {
+        console.error("❌ Missing user private key – cannot unwrap group key");
+        return false;
       }
+
+      // 🧠 Fetch and unwrap from backend
+      groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
+        message.groupId,
+        userId,
+        userPrivateKey
+      );
+
+      // 🧱 Cache it for later use
+      if (groupKey) {
+        await keyCache.setGroupKey(message.groupId, groupKey);
+        console.log(`✅ Cached group key for group ${message.groupId}`);
+      } else {
+        console.error("❌ Failed to unwrap group key – empty key returned");
+        return false;
+      }
+    } catch (unwrapErr) {
+      console.error("❌ Error fetching/unwrapping group key:", unwrapErr);
+      return false;
     }
+  }
 
-    console.log('📤 [WEBSOCKET] Final message data to send:', messageData);
-    return sendWebSocketMessage(messageData);
-  }, [userId, sendWebSocketMessage]);
+  // 🔒 Proceed with encryption
+  const encrypted = await encryptMessage(message.content, groupKey);
+  encryptedContent = JSON.stringify(encrypted);
+}
 
 
+  const messageData = {
+    type: 'message',
+    sender_id: userId,
+    group_id: message.groupId,
+    timestamp: new Date().toISOString(),
+    content: encryptedContent
+  };
+
+  if (hasMedia) {
+    const mediaId = message.media.media_id || message.media.id || message.media.mediaId;
+    if (mediaId) messageData.media_id = mediaId;
+    else messageData.media = message.media;
+  }
+
+  return sendWebSocketMessage(messageData);
+}, [userId, sendWebSocketMessage]);
   const joinGroup = useCallback((groupId) => {
     if (!groupId) {
       console.error('❌ Invalid group ID');
@@ -715,90 +766,87 @@ const useWebSocket = (userId, token) => {
   }, [sendWebSocketMessage]);
 
   // Media upload functions
-  const uploadMedia = useCallback(async (file, groupId, onProgress) => {
-    console.log('📤 [WEBSOCKET] Starting media upload:', { 
-      fileName: file.name, 
-      fileSize: file.size, 
-      fileType: file.type, 
-      groupId: groupId 
-    });
+ 
+const uploadMedia = useCallback(async (file, groupId, onProgress) => {
+  if (!file || !groupId) {
+    console.error('❌ [WEBSOCKET] Invalid file or group ID for media upload');
+    return false;
+  }
 
-    if (!file || !groupId) {
-      console.error('❌ [WEBSOCKET] Invalid file or group ID for media upload');
-      return false;
-    }
+  const groupKey = keyCache.getGroupKey(groupId);
+  if (!groupKey) {
+    console.error('❌ [WEBSOCKET] Group key not found, cannot encrypt file');
+    return false;
+  }
 
-    try {
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('file', file);
+  try {
+    const fileBuffer = await file.arrayBuffer();
+    const { iv, ciphertext } = await encryptFile(fileBuffer, groupKey);
 
-      // Get host IP from environment or default to localhost
-      const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
-      const uploadUrl = `http://${hostIp}:8080/media/upload/${groupId}`;
+    // Convert ciphertext to Blob
+    const encryptedBlob = new Blob([base64ToUint8(ciphertext)], { type: file.type });
 
-      console.log('🌐 [WEBSOCKET] Media upload URL:', uploadUrl);
+    const formData = new FormData();
+    formData.append('file', encryptedBlob, file.name);
+    formData.append('iv', iv); // send IV as metadata
 
-      // Create XMLHttpRequest for progress tracking
+    const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
+    const uploadUrl = `http://${hostIp}:8080/media/upload/${groupId}`;
+
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
 
-      // Return a promise that resolves when upload is complete
-      return new Promise((resolve, reject) => {
-        // Track progress
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable && onProgress) {
-            const progress = Math.round((event.loaded / event.total) * 100);
-            console.log('📊 [WEBSOCKET] Upload progress:', progress + '%');
-            onProgress(progress);
-          }
-        });
-
-        // Handle completion
-        xhr.addEventListener('load', () => {
-          console.log('✅ [WEBSOCKET] Upload request completed with status:', xhr.status);
-          console.log('✅ [WEBSOCKET] Upload response headers:', xhr.getAllResponseHeaders());
-          
-          if (xhr.status === 200) {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              console.log('✅ [WEBSOCKET] Media upload successful, response:', response);
-              resolve(response);
-            } catch (e) {
-              console.error('❌ [WEBSOCKET] Error parsing media upload response:', e);
-              console.error('❌ [WEBSOCKET] Raw response:', xhr.responseText);
-              reject(e);
-            }
-          } else {
-            console.error('❌ [WEBSOCKET] Media upload failed with status:', xhr.status);
-            console.error('❌ [WEBSOCKET] Response text:', xhr.responseText);
-            reject(new Error(`Upload failed with status ${xhr.status}`));
-          }
-        });
-
-        // Handle errors
-        xhr.addEventListener('error', () => {
-          console.error('❌ [WEBSOCKET] Media upload network error');
-          reject(new Error('Upload failed'));
-        });
-
-        // Handle abort
-        xhr.addEventListener('abort', () => {
-          console.error('❌ [WEBSOCKET] Media upload aborted');
-          reject(new Error('Upload aborted'));
-        });
-
-        // Send the request
-        xhr.open('POST', uploadUrl);
-        // Add authentication header
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        console.log('📤 [WEBSOCKET] Sending media upload request with token');
-        xhr.send(formData);
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          onProgress(progress);
+        }
       });
-    } catch (error) {
-      console.error('❌ [WEBSOCKET] Error during media upload:', error);
-      return false;
-    }
-  }, [token]);
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        console.log('✅ [WEBSOCKET] Upload request completed with status:', xhr.status);
+        if (xhr.status === 200) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            console.log('✅ [WEBSOCKET] Media upload successful, response:', response);
+            resolve(response);
+          } catch (e) {
+            console.error('❌ [WEBSOCKET] Error parsing response:', e);
+            reject(e);
+          }
+        } else {
+          console.error('❌ [WEBSOCKET] Media upload failed with status:', xhr.status);
+          console.error('❌ [WEBSOCKET] Response text:', xhr.responseText);
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      });
+
+      // Handle network errors
+      xhr.addEventListener('error', () => {
+        console.error('❌ [WEBSOCKET] Media upload network error');
+        reject(new Error('Upload failed'));
+      });
+
+      // Handle abort
+      xhr.addEventListener('abort', () => {
+        console.error('❌ [WEBSOCKET] Media upload aborted');
+        reject(new Error('Upload aborted'));
+      });
+
+      // Send the request
+      xhr.open('POST', uploadUrl);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      console.log('📤 [WEBSOCKET] Sending media upload request with token');
+      xhr.send(formData);
+    });
+  } catch (error) {
+    console.error('❌ [WEBSOCKET] Error during media upload:', error);
+    return false;
+  }
+}, [token]);
+
 
   useEffect(() => {
     if (userId && token) {

@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import AuthenticatedImage from './AuthenticatedImage';
+import { decryptFile } from '../../utils/cryptoUtils';
+import * as keyCache from '../../services/keyCache'; // to get group or user key
+import { useDecryptedMedia } from '../../hooks/useDecryptedMedia';
 
 const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
   const { token } = useAuth();
   const [isDownloading, setIsDownloading] = useState(false);
-  
+
   const formatTimestamp = (timestamp) => {
     const now = new Date();
     const messageTime = new Date(timestamp);
     const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
     const diffInHours = Math.floor(diffInMinutes / 60);
     const diffInDays = Math.floor(diffInHours / 24);
-    
+
     if (diffInMinutes < 1) return 'now';
     if (diffInMinutes < 60) return `${diffInMinutes}m`;
     if (diffInHours < 24) return `${diffInHours}h`;
@@ -22,11 +25,11 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
 
   const formatFullTimestamp = (timestamp) => {
     const messageTime = new Date(timestamp);
-    return messageTime.toLocaleString([], { 
-      month: 'short', 
-      day: 'numeric', 
+    return messageTime.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
       year: 'numeric',
-      hour: '2-digit', 
+      hour: '2-digit',
       minute: '2-digit'
     });
   };
@@ -41,64 +44,75 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
   };
 
   // Universal download function for all media types
+
   const downloadMediaWithAuth = async (mediaObj, fileName) => {
     if (!token) {
       console.error('❌ [MESSAGE_BUBBLE] No authentication token found');
-      window.open(mediaUrl, '_blank');
       return;
     }
-    
+
     setIsDownloading(true);
-    
+
     try {
       const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId;
       const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
       const mediaUrl = `http://${hostIp}:8080/media/download/${mediaId}`;
-      
-      console.log('📥 [MESSAGE_BUBBLE] Starting download:', { mediaId, fileName });
 
+      console.log('📥 [MESSAGE_BUBBLE] Starting download with decryption:', { mediaId, fileName });
+
+      // Fetch encrypted media
       const response = await fetch(mediaUrl, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+      const encryptedBlob = await response.blob();
+      const encryptedArrayBuffer = await encryptedBlob.arrayBuffer();
+
+      // Get the key for decryption (group key for group media, user key for private)
+      const key = keyCache.getMediaKey(mediaObj.groupId || mediaObj.userId);
+      if (!key) {
+        console.warn('⚠️ No decryption key found, downloading as-is');
+        const objectUrl = URL.createObjectURL(encryptedBlob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName || `media_${mediaId}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+        return;
       }
-      
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      
+
+      // Decrypt the media
+      const decryptedArrayBuffer = await decryptFile(encryptedArrayBuffer, key);
+
+      // Convert decrypted buffer back to blob
+      const decryptedBlob = new Blob([decryptedArrayBuffer], { type: mediaObj.file_type || 'application/octet-stream' });
+      const objectUrl = URL.createObjectURL(decryptedBlob);
+
+      // Trigger download
       const link = document.createElement('a');
       link.href = objectUrl;
       link.download = fileName || `media_${mediaId}`;
-      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
       URL.revokeObjectURL(objectUrl);
-      
-      console.log('✅ [MESSAGE_BUBBLE] Download completed successfully');
-      
+
+      console.log('✅ [MESSAGE_BUBBLE] Media downloaded and decrypted successfully');
     } catch (error) {
-      console.error('❌ [MESSAGE_BUBBLE] Error downloading media:', error);
-      // Fallback to opening in new tab
-      const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId;
-      const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
-      const mediaUrl = `http://${hostIp}:8080/media/download/${mediaId}`;
-      window.open(`${mediaUrl}?token=${token}`, '_blank');
+      console.error('❌ [MESSAGE_BUBBLE] Error downloading/decrypting media:', error);
     } finally {
       setIsDownloading(false);
     }
   };
-
   // Function to render media content with consistent display for sender/receiver
   const renderMedia = (media) => {
     console.log('🖼️ [MESSAGE_BUBBLE] Rendering media:', JSON.stringify(media, null, 2));
-    
+   
     if (!media) {
       console.log('❌ [MESSAGE_BUBBLE] No media object provided, returning null');
       return null;
@@ -106,11 +120,11 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
 
     // Handle nested media object from backend
     const mediaObj = media.media || media;
-    
+
     // Safely extract media ID with multiple fallbacks
     const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId || (mediaObj.media && (mediaObj.media.media_id || mediaObj.media.id));
     console.log('🆔 [MESSAGE_BUBBLE] Extracted media ID:', mediaId);
-    
+
     if (!mediaId) {
       console.log('❌ [MESSAGE_BUBBLE] No valid media ID found, returning null');
       return null;
@@ -120,13 +134,15 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
     const fileName = mediaObj.file_name || mediaObj.fileName || (mediaObj.media && (mediaObj.media.file_name || mediaObj.media.fileName));
     const fileType = mediaObj.file_type || mediaObj.fileType || (mediaObj.media && (mediaObj.media.file_type || mediaObj.media.fileType));
     const fileSize = mediaObj.file_size || mediaObj.fileSize || (mediaObj.media && (mediaObj.media.file_size || mediaObj.media.fileSize));
-    
+
     console.log('📄 [MESSAGE_BUBBLE] Media properties:', { fileName, fileType, fileSize });
 
     const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
     const mediaUrl = `http://${hostIp}:8080/media/download/${mediaId}`;
     console.log('🌐 [MESSAGE_BUBBLE] Media URL:', mediaUrl);
-    
+
+    const { decryptedUrl, loading, error } = useDecryptedMedia(mediaUrl, media.groupId, media.userId);
+
     // Function to view media with authentication (for images)
     const viewMediaWithAuth = async () => {
       if (!token) {
@@ -134,7 +150,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
         window.open(mediaUrl, '_blank');
         return;
       }
-      
+
       try {
         const response = await fetch(mediaUrl, {
           method: 'GET',
@@ -142,16 +158,16 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
             'Authorization': `Bearer ${token}`
           }
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
-        
+
         window.open(objectUrl, '_blank');
-        
+
         setTimeout(() => {
           URL.revokeObjectURL(objectUrl);
         }, 1000);
@@ -163,7 +179,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
 
     // Download button component for all media types
     const DownloadButton = ({ className = "" }) => (
-      <button 
+      <button
         onClick={() => downloadMediaWithAuth(mediaObj, fileName)}
         disabled={isDownloading}
         className={`flex items-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white rounded-lg transition-colors duration-200 text-sm font-medium ${className}`}
@@ -190,7 +206,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
     // Image files - show inline for images with download button
     if (fileType && fileType.startsWith('image/')) {
       console.log('📸 [MESSAGE_BUBBLE] Rendering image file');
-      
+
       return (
         <div className="mt-2 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
           <div className="relative">
@@ -202,10 +218,10 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
               onClick={viewMediaWithAuth}
               className="max-w-xs max-h-80 object-contain cursor-pointer hover:opacity-95 transition-opacity duration-200"
             />
-            
+
             {/* Download overlay button */}
             <div className="absolute top-2 right-2 bg-black/50 rounded-full p-1">
-              <button 
+              <button
                 onClick={(e) => {
                   e.stopPropagation();
                   downloadMediaWithAuth(mediaObj, fileName);
@@ -218,7 +234,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
                 </svg>
               </button>
             </div>
-            
+
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
               <div className="text-white text-sm font-medium truncate">{fileName}</div>
             </div>
@@ -232,94 +248,62 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
         </div>
       );
     }
-    
-    // Video files with embedded player
+
+    // Video file rendering
     if (fileType && fileType.startsWith('video/')) {
-      console.log('🎬 [MESSAGE_BUBBLE] Rendering video file');
       return (
         <div className="mt-2 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
-          <div className="relative">
-            {/* Video player */}
-            <div className="max-w-xs max-h-80 bg-black flex items-center justify-center">
-              <video 
-                controls 
-                className="max-w-full max-h-80"
-                poster={`data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'><rect width='100%' height='100%' fill='%23333'/><text x='50%' y='50%' font-family='Arial' font-size='18' fill='%23fff' text-anchor='middle' dy='.3em'>${fileName}</text></svg>`}
-              >
-                <source src={`${mediaUrl}?token=${token}`} type={fileType} />
+          <div className="relative max-w-xs max-h-80 bg-black flex items-center justify-center">
+            {loading && <div className="text-white">Loading video...</div>}
+            {error && <div className="text-red-400">Failed to load video</div>}
+            {!loading && !error && (
+              <video controls className="max-w-full max-h-80" poster="">
+                <source src={decryptedUrl} type={fileType} />
                 Your browser does not support the video tag.
               </video>
-            </div>
-            
-            <div className="absolute top-2 right-2 bg-black/50 rounded-full p-1">
-              <span className="text-white text-xs px-2 py-1">🎬</span>
-            </div>
-          </div>
-          <div className="bg-gray-100 dark:bg-gray-700 px-3 py-2 flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{fileName}</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {fileType.split('/')[1].toUpperCase()} • {formatFileSize(fileSize)}
-              </div>
-            </div>
-            <DownloadButton className="ml-2" />
+            )}
           </div>
         </div>
       );
     }
-    
-    // Audio files with embedded player
+
+    // Audio file rendering
     if (fileType && fileType.startsWith('audio/')) {
-      console.log('🎵 [MESSAGE_BUBBLE] Rendering audio file');
       return (
         <div className="mt-2 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-4 rounded-t-lg">
-            <div className="flex items-center gap-3">
-              <div className="text-2xl">🎵</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-white truncate">{fileName}</div>
-                <div className="text-white/80 text-xs">{fileType.split('/')[1].toUpperCase()}</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-gray-100 dark:bg-gray-700 p-4">
+          {loading && <div className="text-gray-500 dark:text-gray-400 p-2">Loading audio...</div>}
+          {error && <div className="text-red-400 p-2">Failed to load audio</div>}
+          {!loading && !error && (
             <audio controls className="w-full mb-3">
-              <source src={`${mediaUrl}?token=${token}`} type={fileType} />
+              <source src={decryptedUrl} type={fileType} />
               Your browser does not support the audio element.
             </audio>
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {formatFileSize(fileSize)}
-              </div>
-              <DownloadButton />
-            </div>
-          </div>
+          )}
         </div>
       );
     }
-    
+
     // Document files with specialized icons
     const isDocument = fileType && (
-      fileType.startsWith('application/') || 
+      fileType.startsWith('application/') ||
       fileType.startsWith('text/') ||
       fileType.includes('pdf') ||
       fileType.includes('document') ||
       fileType.includes('sheet') ||
       fileType.includes('presentation')
     );
-    
+
     console.log('📄 [MESSAGE_BUBBLE] Is document:', isDocument);
     console.log('📄 [MESSAGE_BUBBLE] File type:', fileType);
-    
+
     if (isDocument || (!fileType && fileName)) {
       console.log('📑 [MESSAGE_BUBBLE] Rendering document file');
-      
+
       // Determine specialized icon and description based on file type
       let icon = '📁';
       let fileTypeDescription = 'File';
       let bgColor = 'bg-gray-100 dark:bg-gray-700';
-      
+
       if (fileType) {
         if (fileType.includes('pdf')) {
           icon = '📄';
@@ -347,7 +331,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
           bgColor = 'bg-yellow-100 dark:bg-yellow-900/50';
         }
       }
-      
+
       return (
         <div className={`mt-2 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden ${bgColor}`}>
           <div className="p-4">
@@ -374,7 +358,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
         </div>
       );
     }
-    
+
     // Fallback for any other media type
     console.log('📦 [MESSAGE_BUBBLE] Rendering fallback media file');
     return (
@@ -409,21 +393,21 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
       mediaType: message.media ? typeof message.media : 'none',
       mediaKeys: message.media ? Object.keys(message.media) : []
     });
-    
+
     if (!message.media) {
       console.log('📝 [MESSAGE_BUBBLE] No media property, treating as text message');
-      
+
       if (message.content === '' && !message.isCurrentUser) {
         console.log('🔍 [MESSAGE_BUBBLE] Empty message from recipient - might be missing media info');
       }
-      
+
       return false;
     }
-    
+
     const mediaObj = message.media.media || message.media;
     const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId;
     console.log('🆔 [MESSAGE_BUBBLE] Media ID in message:', mediaId);
-    
+
     const result = mediaId !== null && mediaId !== undefined && mediaId !== '';
     console.log('✅ [MESSAGE_BUBBLE] Is media message:', result);
     return result;
@@ -432,11 +416,11 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
   if (message.type === "system") {
     return (
       <div className="flex justify-center my-2">
-        <div 
+        <div
           className="px-3 py-1 rounded-full text-xs italic"
-          style={{ 
+          style={{
             backgroundColor: isDarkMode ? '#374151' : '#f3f4f6',
-            color: colors.textSecondary 
+            color: colors.textSecondary
           }}
         >
           {message.content}
@@ -448,9 +432,9 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
   const hasMedia = isMediaMessage(message);
   const hasContent = message.content && message.content.trim() !== '';
 
-  console.log('📊 [MESSAGE_BUBBLE] Message processing:', { 
-    hasMedia, 
-    hasContent, 
+  console.log('📊 [MESSAGE_BUBBLE] Message processing:', {
+    hasMedia,
+    hasContent,
     messageId: message.id,
     sender: message.senderName,
     isCurrentUser: message.isCurrentUser
@@ -466,7 +450,7 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
               {message.senderName}
             </div>
           )}
-          <div 
+          <div
             className={`px-3 py-2 rounded-lg break-words rounded-tr-none`}
             style={{
               backgroundColor: isDarkMode ? '#374151' : '#f3f4f6',
@@ -497,17 +481,16 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
             {message.senderName}
           </div>
         )}
-        <div 
-          className={`px-3 py-2 rounded-lg break-words ${
-            isCurrentUser 
-              ? 'rounded-tr-none' 
+        <div
+          className={`px-3 py-2 rounded-lg break-words ${isCurrentUser
+              ? 'rounded-tr-none'
               : 'rounded-tl-none'
-          } ${hasMedia ? 'pb-1' : ''}`}
+            } ${hasMedia ? 'pb-1' : ''}`}
           style={{
-            backgroundColor: isCurrentUser 
+            backgroundColor: isCurrentUser
               ? (isDarkMode ? '#ffffff' : '#000000')
               : (isDarkMode ? '#374151' : '#f3f4f6'),
-            color: isCurrentUser 
+            color: isCurrentUser
               ? (isDarkMode ? '#000000' : '#ffffff')
               : colors.text,
             border: `1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'}`
@@ -516,16 +499,15 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
           {hasContent && (
             <div className="whitespace-pre-wrap">{message.content}</div>
           )}
-          
+
           {hasContent && hasMedia && <div className="my-2 border-t border-gray-300 dark:border-gray-600"></div>}
-          
+
           {hasMedia && renderMedia(message.media)}
-          
-          <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${
-            isCurrentUser 
-              ? (isDarkMode ? 'text-gray-700' : 'text-gray-300') 
+
+          <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isCurrentUser
+              ? (isDarkMode ? 'text-gray-700' : 'text-gray-300')
               : 'theme-text-secondary'
-          }`}>
+            }`}>
             <span title={formatFullTimestamp(message.timestamp)}>
               {formatTimestamp(message.timestamp)}
             </span>

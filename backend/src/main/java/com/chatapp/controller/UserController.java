@@ -3,6 +3,7 @@ package com.chatapp.controller;
 import com.chatapp.model.User;
 import com.chatapp.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -74,15 +75,28 @@ public class UserController {
     }
 
     // Get current user info (requires authentication)
+public record UserProfileDTO(Long id, String username, String email) {}
+
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUser() {
-        try {
-            // This would typically get the current user from security context
-            // For now, we'll return a message indicating this endpoint needs auth
-            return ResponseEntity.ok("Current user endpoint - requires authentication implementation");
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
-        }
+public ResponseEntity<?> getCurrentUser() {
+    var authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated()) {
+        return ResponseEntity.status(401).body("Unauthorized");
     }
+
+    String email = authentication.getName();
+
+    Optional<User> userOpt = userRepository.findByEmail(email);
+    if (userOpt.isPresent()) {
+        User user = userOpt.get();
+        return ResponseEntity.ok(new UserProfileDTO(
+                user.getUserId(),
+                user.getUsername(),
+                user.getEmail()
+        ));
+    } else {
+        return ResponseEntity.status(404).body("User not found");
+    }
+}
 
 }

@@ -36,7 +36,7 @@ public class AuthController {
                 "userId", user.getUserId(),
                 "username", user.getUsername(),
                 "email", user.getEmail(),
-                "createdAt", user.getCreatedAt() // make sure User entity has createdAt
+                "createdAt", user.getCreatedAt()
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.status(400).body(Map.of(

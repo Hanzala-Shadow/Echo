@@ -1,5 +1,14 @@
 // Group Chat Service - Handles all group-related API operations
 import ApiClient from '../utils/apis';
+import {
+  generateX25519Keypair,
+  deriveX25519SharedSecret,
+  hkdfSha256,
+  uint8ToBase64,
+  aesGcmEncryptRaw,
+  getRandomBytes,
+  base64ToUint8
+} from "../utils/cryptoUtils";
 
 class GroupChatService {
   /**
@@ -29,20 +38,63 @@ class GroupChatService {
         throw new Error('Group name is required');
       }
 
-      if (!Array.isArray(memberIds) || memberIds.length === 0) {
-        throw new Error('At least one member is required');
-      }
-
-      // Validate that we have at least 2 other members
-      if (memberIds.length < 2) {
+      if (!Array.isArray(memberIds) || memberIds.length < 2) {
         throw new Error('At least 2 other members are required for group creation');
       }
 
-      const response = await ApiClient.chat.createGroup(groupName.trim(), memberIds);
-      console.log('Created group:', response);
-      return response;
+      // Step 1️⃣ - Create the group
+      const groupResponse = await ApiClient.chat.createGroup(groupName.trim(), memberIds);
+      console.log('✅ Created group:', groupResponse);
+
+      const groupId = groupResponse.group_id || groupResponse.groupId;
+      if (!groupId) throw new Error("Invalid groupId in response");
+
+      // Step 2️⃣ - Generate group symmetric key & ephemeral X25519 keypair
+      const groupKey = getRandomBytes(32);
+      const { publicKey: ephPub, secretKey: ephPriv } = await generateX25519Keypair();
+
+      // Step 3️⃣ - Upload group public key
+      await ApiClient.keys.uploadGroupPublicKey({
+        groupId,
+        groupPublicKey: uint8ToBase64(ephPub)
+      });
+      console.log('🔑 Uploaded group public key');
+
+      // Step 4️⃣ - Wrap group key for each member and upload
+      for (const userId of memberIds) {
+        try {
+          // Fetch user’s public key
+          const userKeyResp = await ApiClient.keys.getUserKeys(userId);
+          const pubBase64 = userKeyResp.publicKey || userKeyResp.public_key || userKeyResp.publicKeyBase64;
+          const memberPub = base64ToUint8(pubBase64);
+
+          // Derive shared secret
+          const shared = deriveX25519SharedSecret(ephPriv, memberPub);
+          const aesWrapKey = await hkdfSha256(shared, "chatapp:wrap:groupkey", 32);
+
+          // Encrypt (wrap) group key
+          const { iv, ciphertext } = await aesGcmEncryptRaw(aesWrapKey, groupKey);
+          const wrapped = `${uint8ToBase64(iv)}:${uint8ToBase64(ciphertext)}`;
+
+          // Upload wrapped group key for member
+          await ApiClient.keys.uploadGroupMemberKey({
+            groupId,
+            userId,
+            encryptedGroupPrivateKey: wrapped,
+            nonce: uint8ToBase64(iv)
+          });
+
+          console.log(`🔐 Uploaded group key for user ${userId}`);
+        } catch (err) {
+          console.error(`❌ Failed to wrap key for member ${userId}:`, err);
+        }
+      }
+
+      console.log('🎉 Group creation + key setup complete');
+      return groupResponse;
+
     } catch (error) {
-      console.error('Error creating group:', error);
+      console.error('Error creating group with keys:', error);
       throw new Error(error.message || 'Failed to create group');
     }
   }

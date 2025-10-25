@@ -114,7 +114,8 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
 
     try {
       // Prepare member IDs (include current user automatically)
-      const memberIds = selectedUsers.map(user => user.userId);
+     const memberIds = [...selectedUsers.map(user => user.userId), currentUserId];
+
       
       // Create the group via service
       const newGroup = await GroupChatService.createGroup(groupName.trim(), memberIds);
