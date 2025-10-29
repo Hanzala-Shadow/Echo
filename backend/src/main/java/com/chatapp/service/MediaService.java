@@ -25,7 +25,7 @@ public class MediaService {
         this.mediaMessageRepository = mediaMessageRepository;
     }
 
-    public MediaMessage saveFile(MultipartFile file, Long groupId) throws IOException {
+    public MediaMessage saveFile(MultipartFile file, Long groupId, String iv) throws IOException {
         String originalFileName = file.getOriginalFilename();
         String timestampedName = Instant.now().toEpochMilli() + "_" + originalFileName;
 
@@ -34,7 +34,7 @@ public class MediaService {
 
         // Group-specific folder
         Path groupPath = basePath.resolve(String.valueOf(groupId));
-        Files.createDirectories(groupPath); // Creates folder if not exists
+        Files.createDirectories(groupPath);
 
         // File path inside group folder
         Path filePath = groupPath.resolve(timestampedName);
@@ -50,6 +50,7 @@ public class MediaService {
         mediaMessage.setFilePath(filePath.toString());
         mediaMessage.setUploadedAt(Instant.now());
         mediaMessage.setGroupId(groupId);
+        mediaMessage.setIv(iv);
 
         return mediaMessageRepository.save(mediaMessage);
     }

@@ -263,6 +263,9 @@ export async function decryptMessage(encrypted, groupKeyBytes) {
 /** =========================
  *  Encrypt / Decrypt Media Files
  *  ========================= */
+/** =========================
+ *  Encrypt / Decrypt Media Files
+ *  ========================= */
 export async function encryptFile(fileBuffer, groupKeyBytes) {
   try {
     const { iv, ciphertext } = await aesGcmEncryptRaw(
@@ -282,11 +285,19 @@ export async function encryptFile(fileBuffer, groupKeyBytes) {
 export async function decryptFile(encrypted, groupKeyBytes) {
   try {
     const { iv, ciphertext } = encrypted;
+    
+    // Convert base64 strings to Uint8Array if needed
+    const ivBytes = typeof iv === 'string' ? base64ToUint8(iv) : iv;
+    const ciphertextBytes = typeof ciphertext === 'string' 
+      ? base64ToUint8(ciphertext) 
+      : new Uint8Array(ciphertext);
+    
     const decrypted = await aesGcmDecryptRaw(
       groupKeyBytes,
-      base64ToUint8(iv),
-      base64ToUint8(ciphertext)
+      ivBytes,
+      ciphertextBytes
     );
+    
     return decrypted.buffer;
   } catch (error) {
     console.error('File decryption failed:', error);

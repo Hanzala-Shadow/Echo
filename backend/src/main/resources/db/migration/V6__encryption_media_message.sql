@@ -1,0 +1,2 @@
+ALTER TABLE media_message 
+ADD COLUMN iv TEXT NOT NULL DEFAULT '';
