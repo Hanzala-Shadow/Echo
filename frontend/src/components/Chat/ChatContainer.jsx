@@ -209,7 +209,7 @@
             // Only check member count, ignore isDirect flag
             const memberCount = group.memberCount || group.member_count || 0;
             // Explicitly exclude groups with 2 or fewer members
-            const shouldInclude = memberCount > 2;
+            const shouldInclude = !group.isDirect && memberCount > 0;
             console.log(`🔍 Group Filter - Name: ${group.groupName || group.name || 'Unknown'}, ID: ${group.groupId || group.id}, memberCount: ${memberCount}, shouldInclude: ${shouldInclude}`);
             return shouldInclude;
           });
