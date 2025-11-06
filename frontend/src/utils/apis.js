@@ -196,6 +196,18 @@ class ApiClient {
         }
       }),
 
+    // Leave group
+    leaveGroup: (groupId) => 
+      ApiClient.request(`/group/${groupId}/leave`, {
+        method: 'DELETE'
+      }),
+
+    // Add member to group
+    addMember: (groupId, adminId, userId) => 
+      ApiClient.request(`/group/${groupId}/add-member?adminId=${adminId}&userId=${userId}`, {
+        method: 'POST'
+      }),
+
     // Get message history for a group
     // getGroupMessages: (groupId, limit = 50, offset = 0) => 
     //   ApiClient.request(`/groups/${groupId}/messages?limit=${limit}&offset=${offset}`),

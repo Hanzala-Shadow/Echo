@@ -1,6 +1,7 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom'; // ADD THIS IMPORT
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Skeleton from '../Common/Skeleton';
+import { useGroups } from '../../hooks/useGroups';
 
 const GroupSidebar = ({ 
   groups, 
@@ -9,23 +10,51 @@ const GroupSidebar = ({
   onCreateGroup, 
   isDarkMode, 
   colors,
-  loading = false 
+  loading = false,
+  currentUserId, // Add this prop from ChatContainer
+  onGroupLeft // Add this callback
 }) => {
-  const navigate = useNavigate(); // ADD THIS HOOK
+  const navigate = useNavigate();
+  const { leaveGroup, loading: leaveLoading } = useGroups();
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leavingGroup, setLeavingGroup] = useState(null);
   
   console.log('GroupSidebar rendered with props:', {
     groups: groups?.length,
     activeGroupId,
-    onGroupSelect: typeof onGroupSelect,
-    onCreateGroup: typeof onCreateGroup,
-    isDarkMode,
-    loading
+    currentUserId
   });
-  
-  // Additional debugging
-  React.useEffect(() => {
-    console.log('GroupSidebar mounted/updated');
-  }, []);
+
+  const handleLeaveGroup = async (group) => {
+    setLeavingGroup(group.id);
+    setShowLeaveConfirm(false);
+    
+    const result = await leaveGroup(group.id);
+    
+    if (result.success) {
+      console.log(`✅ Successfully left group ${group.id}`);
+      // Notify parent component
+      if (onGroupLeft) {
+        onGroupLeft(group.id);
+      }
+      
+      // If the active group was left, clear it
+      if (activeGroupId === group.id) {
+        onGroupSelect(null);
+      }
+    } else {
+      console.error(`❌ Failed to leave group: ${result.error}`);
+      // You might want to show an error toast here
+    }
+    
+    setLeavingGroup(null);
+  };
+
+  const openLeaveConfirm = (group, e) => {
+    e.stopPropagation(); // Prevent group selection
+    setLeavingGroup(group.id);
+    setShowLeaveConfirm(true);
+  };
 
   const getInitials = (name) => {
     return name
@@ -62,6 +91,49 @@ const GroupSidebar = ({
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
+      {/* Leave Group Confirmation Modal */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`rounded-xl shadow-2xl max-w-sm w-full ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className={`p-6 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Leave Group
+              </h3>
+              <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                Are you sure you want to leave this group? You won't be able to see group messages anymore.
+              </p>
+            </div>
+            <div className={`p-6 flex justify-end space-x-3 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'text-gray-300 hover:text-white' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                disabled={leaveLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const group = groups.find(g => g.id === leavingGroup);
+                  if (group) handleLeaveGroup(group);
+                }}
+                disabled={leaveLoading}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  leaveLoading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                {leaveLoading ? 'Leaving...' : 'Leave Group'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-3 border-b theme-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -82,12 +154,8 @@ const GroupSidebar = ({
           <button
             onClick={(e) => {
               console.log('🎯 Create group button clicked - PLUS SIGN');
-              console.log('onCreateGroup function:', onCreateGroup);
               if (onCreateGroup && typeof onCreateGroup === 'function') {
-                console.log('🎯 Calling onCreateGroup function');
                 onCreateGroup();
-              } else {
-                console.log('❌ onCreateGroup function is not defined or not a function');
               }
             }}
             className="p-2 rounded-lg hover-scale theme-text flex items-center justify-center cursor-pointer z-50 relative"
@@ -117,8 +185,6 @@ const GroupSidebar = ({
         </div>
       </div>
 
-      {/* REMOVED DUPLICATE BUTTON SECTION */}
-
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           renderGroupSkeletons()
@@ -132,13 +198,8 @@ const GroupSidebar = ({
             <p className="text-xs theme-text-secondary mt-1">Create your first group!</p>
             <button
               onClick={(e) => {
-                console.log('🎯 Create group button clicked - EMPTY STATE');
-                console.log('onCreateGroup function:', onCreateGroup);
                 if (onCreateGroup && typeof onCreateGroup === 'function') {
-                  console.log('🎯 Calling onCreateGroup function');
                   onCreateGroup();
-                } else {
-                  console.log('❌ onCreateGroup function is not defined or not a function');
                 }
               }}
               className="mt-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer z-50 relative"
@@ -151,22 +212,26 @@ const GroupSidebar = ({
             </button>
           </div>
         ) : (
-          groups.map((group) => (
-            <div
-              key={group.id}
-              onClick={() => onGroupSelect(group)}
-              className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
-                activeGroupId === group.id ? 'theme-surface' : ''
-              }`}
-              style={{
-                backgroundColor: activeGroupId === group.id 
-                  ? (isDarkMode ? '#374151' : '#e5e7eb')
-                  : 'transparent',
-                border: activeGroupId === group.id 
-                  ? `1px solid ${colors.border}` 
-                  : '1px solid transparent'
-              }}
-            >
+          groups.map((group) => {
+            const isAdmin = group.createdBy === currentUserId;
+            const isLeaving = leavingGroup === group.id;
+            
+            return (
+              <div
+                key={group.id}
+                onClick={() => onGroupSelect(group)}
+                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] group relative ${
+                  activeGroupId === group.id ? 'theme-surface' : ''
+                }`}
+                style={{
+                  backgroundColor: activeGroupId === group.id 
+                    ? (isDarkMode ? '#374151' : '#e5e7eb')
+                    : 'transparent',
+                  border: activeGroupId === group.id 
+                    ? `1px solid ${colors.border}` 
+                    : '1px solid transparent'
+                }}
+              >
                 <div className="relative">
                   <div 
                     className="h-10 w-10 rounded-full flex items-center justify-center font-medium text-sm"
@@ -177,6 +242,19 @@ const GroupSidebar = ({
                   >
                     {getInitials(group.name)}
                   </div>
+                  {/* Show admin crown for group creator */}
+                  {isAdmin && (
+                    <div 
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
+                      style={{
+                        backgroundColor: '#f59e0b', // amber-500
+                        border: '2px solid white'
+                      }}
+                      title="Group Admin"
+                    >
+                      <span className="text-xs">👑</span>
+                    </div>
+                  )}
                   {/* Show online indicator if any members are online */}
                   {group.isOnline && (
                     <div 
@@ -195,8 +273,10 @@ const GroupSidebar = ({
                   <div className="flex items-center gap-1 mb-0.5">
                     <h3 className="font-medium truncate theme-text text-sm">{group.name}</h3>
                     <div className="flex items-center gap-1">
-                      {/* Show group icon for groups with 3 or more members */}
                       <span className="text-xs theme-text-secondary">👥</span>
+                      {isAdmin && (
+                        <span className="text-xs text-amber-500" title="You are the admin">👑</span>
+                      )}
                     </div>
                   </div>
                   <p className="text-xs theme-text-secondary truncate">
@@ -211,11 +291,34 @@ const GroupSidebar = ({
                     </span>
                   </div>
                 </div>
+
+                {/* Leave Group Button (only for non-admin members) */}
+                {!isAdmin && (
+                  <button
+                    onClick={(e) => openLeaveConfirm(group, e)}
+                    disabled={isLeaving}
+                    className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded ${
+                      isLeaving 
+                        ? 'text-gray-400 cursor-not-allowed' 
+                        : 'text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900'
+                    }`}
+                    title="Leave group"
+                  >
+                    {isLeaving ? (
+                      <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    )}
+                  </button>
+                )}
               </div>
-            ))
-          )}
-        </div>
+            );
+          })
+        )}
       </div>
+    </div>
   );
 };
 

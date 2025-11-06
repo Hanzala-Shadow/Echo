@@ -11,6 +11,7 @@
   import ChatHeader from './ChatHeader';
   import GroupCreateModal from './Groups/GroupCreateModal';
   import useRealTimeUserStatus from '../../hooks/useRealTimeUserStatus';
+  import AddMemberModal from './AddMemberModal';
 
   const ChatContainer = () => {
     const location = useLocation();
@@ -27,6 +28,7 @@
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [groupMembers, setGroupMembers] = useState([]); // Track members of active group
     const messagesEndRef = useRef(null);
+    const [showAddMemberModal, setShowAddMemberModal] = useState(false);
 
     // ADDED THIS - Get group member usernames for the hook
     const groupMemberUsernames = useMemo(() => 
@@ -655,6 +657,7 @@
           }}
         >
           {showGroupSidebar && (
+            // In ChatContainer.jsx, update the GroupSidebar component:
             <GroupSidebar
               groups={groups}
               activeGroupId={activeGroup?.id}
@@ -663,6 +666,18 @@
               isDarkMode={isDarkMode}
               colors={colors}
               loading={loading}
+              currentUserId={user?.userId} // ADD THIS
+              onGroupLeft={(groupId) => { // ADD THIS
+                // Remove the group from the list
+                setGroups(prev => prev.filter(group => group.id !== groupId));
+                
+                // If the active group was left, clear it
+                if (activeGroup?.id === groupId) {
+                  setActiveGroup(null);
+                  setLocalMessages([]);
+                  setLoadedGroups(new Set());
+                }
+              }}
             />
           )}
         </div>
@@ -743,6 +758,11 @@
               isConnected={isConnected}
               isDarkMode={isDarkMode}
               colors={colors}
+              user={user} // ADD THIS - pass current user
+              onAddMember={() => { // ADD THIS - function to open add member modal
+                // You'll need to create state for AddMemberModal in ChatContainer
+                setShowAddMemberModal(true);
+              }}
             />
           </div>
           
@@ -801,6 +821,22 @@
             isOpen={isCreateModalOpen}
             onClose={() => setIsCreateModalOpen(false)}
             onGroupCreated={handleGroupCreated}
+            currentUserId={user?.userId}
+            isDarkMode={isDarkMode}
+            colors={colors}
+          />
+        )}
+
+        {showAddMemberModal && (
+          <AddMemberModal
+            isOpen={showAddMemberModal}
+            onClose={() => setShowAddMemberModal(false)}
+            onMemberAdded={(newMembers) => {
+              // Refresh group members when new members are added
+              // You might want to refetch group members here
+              console.log('New members added:', newMembers);
+            }}
+            groupId={activeGroup?.id}
             currentUserId={user?.userId}
             isDarkMode={isDarkMode}
             colors={colors}
