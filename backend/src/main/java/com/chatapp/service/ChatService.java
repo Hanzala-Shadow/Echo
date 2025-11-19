@@ -1,9 +1,11 @@
 package com.chatapp.service;
 
+import com.chatapp.model.Group;
 import com.chatapp.model.GroupMember;
 import com.chatapp.model.Message;
 import com.chatapp.model.MessageDelivery;
 import com.chatapp.model.MediaMessage;
+import com.chatapp.repository.GroupRepository;
 import com.chatapp.repository.GroupMemberRepository;
 import com.chatapp.repository.MessageDeliveryRepository;
 import com.chatapp.repository.MessageRepository;
@@ -42,6 +44,9 @@ public class ChatService {
     private MediaMessageRepository mediaMessageRepository;
 
     @Autowired
+    private GroupRepository groupRepository;
+
+    @Autowired
     private ObjectMapper mapper;
 
     /**
@@ -50,19 +55,21 @@ public class ChatService {
      * { type: "message", sender_id, group_id, content?, media_id? }
      */
     @Transactional
-    public void handleIncomingMessage(Map<String, Object> payload, Map<Long, WebSocketSession> onlineUsers) throws Exception {
+    public void handleIncomingMessage(Map<String, Object> payload, Map<Long, WebSocketSession> onlineUsers)
+            throws Exception {
         // Validate payload
         if (payload == null || payload.get("sender_id") == null || payload.get("group_id") == null) {
             System.out.println("Invalid payload: " + payload);
             return;
         }
-        
+
         Long senderId = Long.valueOf(payload.get("sender_id").toString());
         Long groupId = Long.valueOf(payload.get("group_id").toString());
         String content = payload.get("content") != null ? payload.get("content").toString() : null;
         String messageType = payload.get("type") != null ? payload.get("type").toString() : "message";
 
-        if (groupId == null) return;
+        if (groupId == null)
+            return;
 
         // Build message
         Message msg = new Message();
@@ -84,7 +91,8 @@ public class ChatService {
         List<GroupMember> members = groupMemberRepository.findByGroupId(groupId);
 
         for (GroupMember gm : members) {
-            if (gm.getUserId().equals(senderId)) continue;
+            if (gm.getUserId().equals(senderId))
+                continue;
 
             Long recipientId = gm.getUserId();
             MessageDelivery delivery = new MessageDelivery(msg, userRepository.findById(recipientId).orElseThrow());
@@ -136,6 +144,53 @@ public class ChatService {
         return dtoList;
     }
 
+    // Leave Group for User
+    // Leave Group for User
+    @Transactional
+    public void leaveGroup(Long userId, Long groupId) {
+        // Fetch group
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+
+        // Check if user is the admin
+        if (group.getCreatedBy().equals(userId)) {
+            throw new RuntimeException("Admin cannot leave the group. Transfer ownership first.");
+        }
+
+        // Check membership
+        GroupMember membership = groupMemberRepository.findByGroupIdAndUserId(groupId, userId)
+                .orElseThrow(() -> new RuntimeException("User is not a member of this group"));
+
+        // Delete membership
+        groupMemberRepository.delete(membership);
+    }
+
+    // Add to Group
+    @Transactional
+    public void addMemberToGroup(Long adminId, Long groupId, Long newUserId) {
+        // Fetch group
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+
+        // Check admin
+        if (!group.getCreatedBy().equals(adminId)) {
+            throw new RuntimeException("Only the admin can add members");
+        }
+
+        // Check if already a member
+        boolean alreadyMember = groupMemberRepository.existsByGroupIdAndUserId(groupId, newUserId);
+        if (alreadyMember) {
+            throw new RuntimeException("User is already a member of the group");
+        }
+
+        // Add new member
+        GroupMember newMember = new GroupMember();
+        newMember.setGroupId(groupId);
+        newMember.setUserId(newUserId);
+        groupMemberRepository.save(newMember);
+
+    }
+
     // -----------------------------
     // Helpers
     // -----------------------------
@@ -150,12 +205,12 @@ public class ChatService {
         msgResponse.put("delivered", delivered);
         msgResponse.put("type", "message");
 
-        String senderName=userRepository.findById(m.getSenderId())      
-                .map(user->user.getUsername())
+        String senderName = userRepository.findById(m.getSenderId())
+                .map(user -> user.getUsername())
                 .orElse("Unknown");
 
-        msgResponse.put("sender_name",senderName);
-        
+        msgResponse.put("sender_name", senderName);
+
         if (m.getMediaMessage() != null) {
             MediaMessage media = m.getMediaMessage();
             Map<String, Object> mediaInfo = new HashMap<>();

@@ -28,9 +28,12 @@ public class MediaMessage {
     private Instant uploadedAt;
 
     @Column(name = "group_id")
-    private Long groupId; 
+    private Long groupId;
 
-    // Getters and setters
+    @Column(nullable = false)
+    private String iv; 
+
+    // Getters and setters...
     public Long getMediaId() { return mediaId; }
     public void setMediaId(Long mediaId) { this.mediaId = mediaId; }
 
@@ -50,5 +53,8 @@ public class MediaMessage {
     public void setUploadedAt(Instant uploadedAt) { this.uploadedAt = uploadedAt; }
 
     public Long getGroupId() { return groupId; }
-    public void setGroupId(Long groupId) { this.groupId = groupId; } 
+    public void setGroupId(Long groupId) { this.groupId = groupId; }
+
+    public String getIv() { return iv; }
+    public void setIv(String iv) { this.iv = iv; }
 }

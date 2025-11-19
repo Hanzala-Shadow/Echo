@@ -1,4 +1,6 @@
-//const API_BASE_URL = 'http://localhost:8080/api';
+import * as keyCache from "../services/keyCache";
+import { decryptMessage } from "../utils/cryptoUtils";
+import * as groupKeyService from "../services/groupKeyService";
 
 const getApiBaseUrl = () => {
   try {
@@ -194,12 +196,92 @@ class ApiClient {
         }
       }),
 
+    // Leave group
+    leaveGroup: (groupId) => 
+      ApiClient.request(`/group/${groupId}/leave`, {
+        method: 'DELETE'
+      }),
+
+    // Add member to group
+    addMember: (groupId, adminId, userId) => 
+      ApiClient.request(`/group/${groupId}/add-member?adminId=${adminId}&userId=${userId}`, {
+        method: 'POST'
+      }),
+
     // Get message history for a group
     // getGroupMessages: (groupId, limit = 50, offset = 0) => 
     //   ApiClient.request(`/groups/${groupId}/messages?limit=${limit}&offset=${offset}`),
-    getGroupMessages: (groupId) => 
-      ApiClient.request(`/groups/${groupId}/messages`),
+  getGroupMessages: async (groupId) => {
+    // 1️⃣ Fetch messages from backend
+    const resp = await ApiClient.request(`/groups/${groupId}/messages`);
+    console.log("🧩 [DEBUG] getGroupMessages raw response:", resp);
 
+    const messages = resp.messages || [];
+
+    // 2️⃣ Check if group key is already cached
+    let groupKey = await keyCache.getGroupKey(groupId);
+    console.warn(`Group Key for group ${groupId}:`, groupKey);
+
+    // 3️⃣ If not cached, fetch & unwrap group key
+    if (!groupKey) {
+      console.warn(`⚠️ No group key in cache for group ${groupId}, fetching...`);
+
+      const currentUser = JSON.parse(localStorage.getItem("user"));
+      if (!currentUser) {
+      console.warn("⚠️ No logged-in user available for group key fetch");
+      return messages; // fallback
+      }
+
+      let userPrivateKey = await keyCache.getUserPrivateKey();
+
+      console.warn(`⚠️ User Private Key : ${userPrivateKey}`);
+
+if (!(userPrivateKey instanceof Uint8Array)) {
+    // If stored as Base64 or ArrayBuffer, convert:
+    if (typeof userPrivateKey === "string") {
+        userPrivateKey = base64ToUint8(userPrivateKey);
+    } else if (userPrivateKey instanceof ArrayBuffer) {
+        userPrivateKey = new Uint8Array(userPrivateKey);
+    } else {
+        throw new Error("User private key is not a valid Uint8Array");
+    }
+}
+        groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
+        groupId,
+        currentUser.userId,      // logged-in user id
+        userPrivateKey // user's private key
+      );
+
+      if (groupKey) {
+        // Cache for later use
+        await keyCache.setGroupKey(groupId, groupKey, false);
+      } else {
+        console.warn(`⚠️ Could not fetch/unpack group key for group ${groupId}`);
+      }
+    }
+
+    // 4️⃣ Decrypt messages using the group key
+    const decryptedMessages = await Promise.all(messages.map(async (msg) => {
+      let decryptedContent = msg.content;
+
+      try {
+        if (msg.content && groupKey) {
+          // Parse the JSON string stored in DB: { iv, ciphertext }
+          const encrypted = JSON.parse(msg.content);
+          decryptedContent = await decryptMessage(encrypted, groupKey);
+        }
+      } catch (e) {
+        console.error('❌ Message decryption failed for', msg.messageId, e);
+      }
+
+      return {
+        ...msg,
+        content: decryptedContent
+      };
+    }));
+
+    return decryptedMessages;
+},
 
     // Get members of a specific group
     getGroupMembers: (groupId) => 
@@ -286,6 +368,45 @@ class ApiClient {
     check: () => 
       ApiClient.request('/health')
   };
-}
 
+
+  // ======================
+  // KEY MANAGEMENT ENDPOINTS
+  // ======================
+  static keys = {
+    // Upload user’s generated public key + encrypted private key
+    uploadUserKeys: (payload) => 
+      ApiClient.request('/keys/user', {
+        method: 'POST',
+        body: payload
+      }),
+
+    // Get user’s stored keys (public + encrypted private)
+    getUserKeys: (userId, token) =>
+      ApiClient.request(`/keys/user/${userId}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+
+    // Optional: group key management
+    uploadGroupPublicKey: (payload) =>
+      ApiClient.request('/keys/group-public', {
+        method: 'POST',
+        body: payload
+      }),
+
+    getGroupPublicKey: (groupId) =>
+      ApiClient.request(`/keys/group-public/${groupId}`),
+
+    uploadGroupMemberKey: (payload) =>
+      ApiClient.request('/keys/group-member', {
+        method: 'POST',
+        body: payload
+      }),
+
+    getGroupMemberKey: (groupId, userId) =>
+      ApiClient.request(`/keys/group-member/${groupId}/${userId}`)
+  };
+
+}
 export default ApiClient;

@@ -57,6 +57,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
+                                "/api/keys/user/**",
                                 "/ws/**",
                                 "/network/qr",
                                 "/network/ip",
@@ -83,7 +84,8 @@ public class SecurityConfig {
                 "http://localhost:*",
                 "http://127.0.0.1:*",
                 "http://" + hostIp + ":*",
-                "http://*:5173"));
+                "http://*:5173"
+                ));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
@@ -124,6 +126,7 @@ public class SecurityConfig {
             List<String> publicEndpoints = Arrays.asList(
                     "/api/auth/register",
                     "/api/auth/login",
+                    "/api/keys/user/**",
                     "/ws/**",
                     "/network/qr",
                     "/network/ip",
