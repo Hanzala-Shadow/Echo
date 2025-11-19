@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ApiClient from '../utils/apis';
+import ApiClient from '../services/api';                // UPDATED
 
 export const useGroups = () => {
   const [loading, setLoading] = useState(false);

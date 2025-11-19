@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import ApiClient from '../utils/apis';
+import ApiClient from '../services/api';
 
 /**
  * Custom hook for tracking real-time user status and DM indicators

@@ -125,6 +125,12 @@ public class ChatController {
         try {
             Long creatorId = extractUserIdFromHeader(authHeader);
             String groupName = (String) body.getOrDefault("group_name", "New Group");
+            
+            // Get AI enabled setting from request (default false)
+            Boolean aiEnabled = body.containsKey("ai_enabled") 
+            ? Boolean.valueOf(body.get("ai_enabled").toString()) 
+            : false;
+        
             List<?> memberIdsRaw = (List<?>) body.getOrDefault("member_ids", new ArrayList<>());
             List<Long> memberIds = memberIdsRaw.stream()
                     .map(o -> Long.valueOf(o.toString()))
@@ -143,13 +149,14 @@ public class ChatController {
 
                 if (otherUserId != null) {
                     // Use synchronized method to create or get existing DM
-                    Optional<Group> dmResult = createOrGetDM(creatorId, otherUserId, groupName);
+                    Optional<Group> dmResult = createOrGetDM(creatorId, otherUserId, groupName, aiEnabled);
                     if (dmResult.isPresent()) {
                         Group group = dmResult.get();
                         return ResponseEntity.ok(Map.of(
                                 "group_id", group.getGroupId(),
                                 "group_name", group.getGroupName(),
-                                "member_ids", memberIds));
+                                "member_ids", memberIds,
+                                "ai_enabled", group.getAiEnabled()));
                     }
                 }
             }
@@ -160,6 +167,8 @@ public class ChatController {
             group.setCreatedBy(creatorId);
             group.setCreatedAt(LocalDateTime.now());
             group.setIsDirect(memberIds.size() == 2);
+            group.setAiEnabled(aiEnabled);
+
             groupRepository.save(group);
 
             for (Long uid : memberIds) {
@@ -172,7 +181,8 @@ public class ChatController {
             return ResponseEntity.ok(Map.of(
                     "group_id", group.getGroupId(),
                     "group_name", group.getGroupName(),
-                    "member_ids", memberIds));
+                    "member_ids", memberIds,
+                    "ai_enabled", group.getAiEnabled()));
 
         } catch (Exception e) {
             return errorResponse("Unauthorized or invalid token", 401);
@@ -214,7 +224,7 @@ public class ChatController {
     }
 
     // Improved synchronized method to create or get existing DM
-    private synchronized Optional<Group> createOrGetDM(Long user1Id, Long user2Id, String groupName) {
+    private synchronized Optional<Group> createOrGetDM(Long user1Id, Long user2Id, String groupName, Boolean aiEnabled) {
         // Check if DM already exists
         Optional<Group> existingDM = findExistingDM(user1Id, user2Id);
         if (existingDM.isPresent()) {
@@ -227,6 +237,8 @@ public class ChatController {
         group.setCreatedBy(user1Id);
         group.setCreatedAt(LocalDateTime.now());
         group.setIsDirect(true);
+        group.setAiEnabled(aiEnabled);
+
         groupRepository.save(group);
 
         // Add both users as members
@@ -269,6 +281,7 @@ public class ChatController {
                 groupMap.put("createdAt", group.getCreatedAt());
                 groupMap.put("isDirect", group.getIsDirect());
                 groupMap.put("memberCount", memberCount);
+                groupMap.put("aiEnabled", group.getAiEnabled());
                 return groupMap;
             }).collect(Collectors.toList());
 
@@ -318,6 +331,39 @@ public class ChatController {
             return errorResponse("Unauthorized or invalid token", 401);
         }
     }
+
+    // -----------------------------
+    // Get AI status for a group (read-only)
+    // -----------------------------
+@GetMapping("/group/{groupId}/ai-status")
+public ResponseEntity<?> getAIStatus(
+        @RequestHeader("Authorization") String authHeader,
+        @PathVariable Long groupId) {
+    try {
+        Long userId = extractUserIdFromHeader(authHeader);
+
+        // Verify user is a member of the group
+        boolean member = groupMemberRepository.existsByGroupIdAndUserId(groupId, userId);
+        if (!member) {
+            return errorResponse("User not in group", 403);
+        }
+
+        // Get group
+        Optional<Group> groupOpt = groupRepository.findById(groupId);
+        if (groupOpt.isEmpty()) {
+            return errorResponse("Group not found", 404);
+        }
+
+        Group group = groupOpt.get();
+
+        return ResponseEntity.ok(Map.of(
+                "group_id", groupId,
+                "ai_enabled", group.getAiEnabled(),
+                "message", "AI features are " + (group.getAiEnabled() ? "enabled" : "disabled") + " for this group"));
+    } catch (Exception e) {
+        return errorResponse("Unauthorized or invalid token", 401);
+    }
+}
 
     // -----------------------------
     // Fetch dashboard statistics

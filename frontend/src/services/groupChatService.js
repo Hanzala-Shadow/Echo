@@ -1,5 +1,6 @@
 // Group Chat Service - Handles all group-related API operations
-import ApiClient from '../utils/apis';
+import ApiClient from './api';
+
 import {
   generateX25519Keypair,
   deriveX25519SharedSecret,

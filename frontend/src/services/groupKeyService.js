@@ -2,6 +2,7 @@
  * Group Key Service - Pure JavaScript Implementation
  * Works in ANY environment (no WebCrypto dependency)
  */
+import api from './api';
 
 import {
   generateX25519Keypair,
@@ -13,7 +14,7 @@ import {
   aesGcmDecryptRaw,
   getRandomBytes
 } from "../utils/cryptoUtils";
-import api from "../utils/apis";
+
 
 /** 
  * Create new group symmetric key and wrap it for each member 
