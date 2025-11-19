@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
-import ApiClient from '../utils/apis';  
+import ApiClient from '../services/api';                // UPDATED (utils/apis -> services/api)
 import useWebSocket from '../hooks/useWebSocket';
+
 import {
   generateAndPasswordWrapUserKey,
   recoverUserPrivateKeyFromPassword

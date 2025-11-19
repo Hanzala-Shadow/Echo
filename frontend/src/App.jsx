@@ -2,14 +2,17 @@ import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
-import Login from './components/Auth/Login';
-import Register from './components/Auth/Register';
-import ProtectedRoute from './components/ProtectedRoute';
-import Dashboard from './components/Dashboard';
-import ErrorBoundary from './components/Common/ErrorBoundary';
-// Lazy load components for better performance
-const ChatContainer = lazy(() => import('./components/Chat/ChatContainer'));
-const DMContainer = lazy(() => import('./components/Chat/DMContainer'));
+import ProtectedRoute from './features/auth/ProtectedRoute'; // UPDATED
+import ErrorBoundary from './components/ui/ErrorBoundary';    // UPDATED
+
+// UPDATED: Pages and Features
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+
+// Lazy load components
+const ChatContainer = lazy(() => import('./features/chat/GroupChatContainer')); // UPDATED & RENAMED
+const DMContainer = lazy(() => import('./features/chat/DMContainer'));          // UPDATED
 
 function App() {
   return (

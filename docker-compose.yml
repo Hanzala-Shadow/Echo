@@ -58,6 +58,69 @@ services:
     depends_on:
       - db
 
+# AI Services
+
+  translation_service:
+    build: ./ai_module/translation_service
+    container_name: translation_service
+    restart: always
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./ai_module/models/translation:/app/models 
+    environment:
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_HOME=/app/models
+      - HF_HUB_OFFLINE=1  # Force offline mode
+
+  summarizer_service:
+    build: ./ai_module/summarizer_service
+    container_name: summarizer_service
+    restart: always
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./ai_module/models/summarizer:/app/models  
+    environment:
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_HOME=/app/models
+      - HF_HUB_OFFLINE=1  # Force offline mode
+
+  toxicity_service:
+    build: ./ai_module/toxicity_service
+    container_name: toxicity_service
+    restart: always
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./ai_module/models/toxicity:/app/models 
+    environment:
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_HOME=/app/models
+      - HF_HUB_OFFLINE=1  # Force offline mode
+
+  deadline_service:
+    build: ./ai_module/deadline_service
+    container_name: deadline_service
+    restart: always
+    ports:
+      - "8004:8004"
+    # No models needed for deadline service
+
+  smart_reply_service:
+    build: ./ai_module/smart_reply_service
+    container_name: smart_reply_service
+    restart: always
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./ai_module/models/smart_reply:/app/models 
+    environment:
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_HOME=/app/models
+      - HF_HUB_OFFLINE=1  # Force offline mode
+
+
 volumes:
   db_data:
   pgadmin_data:

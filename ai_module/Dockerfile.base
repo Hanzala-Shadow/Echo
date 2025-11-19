@@ -1,0 +1,14 @@
+# ai_module/Dockerfile.base
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install common Python dependencies
+COPY requirements.base.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.base.txt
