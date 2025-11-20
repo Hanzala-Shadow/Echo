@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import EmojiPicker from 'emoji-picker-react';
 import { useAuth } from '../../context/AuthContext';
+import ApiClient from '../../services/api';
 
 const MessageInput = ({ 
   onSendMessage, 
@@ -9,7 +10,9 @@ const MessageInput = ({
   isDarkMode,
   colors,
   activeGroupId,
-  onTyping
+  onTyping,
+  enableAI,
+  lastMessage
 }) => {
   const { uploadMedia } = useAuth();
   const [message, setMessage] = useState("");
@@ -23,6 +26,11 @@ const MessageInput = ({
   const [error, setError] = useState("");
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [isCheckingToxicity, setIsCheckingToxicity] = useState(false);
+  const [isLoadingAi, setIsLoadingAi] = useState(false); // Add this state
 
   // Voice recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -303,6 +311,23 @@ const MessageInput = ({
     if (!hasText && !hasMedia) {
       return;
     }
+
+    if (enableAI && hasText && !media) { // Only check text toxicity
+        setIsCheckingToxicity(true);
+        try {
+            const toxicityResult = await ApiClient.ai.checkToxicity(activeGroupId, message);
+            
+            if (toxicityResult.is_toxic && toxicityResult.action === 'block') {
+                setError(`🚫 Message blocked: ${toxicityResult.label} detected.`);
+                setIsCheckingToxicity(false);
+                return; // STOP sending
+            }
+        } catch (err) {
+            console.warn("Toxicity check failed, allowing message anyway:", err);
+            // Optionally block on error or allow
+        }
+        setIsCheckingToxicity(false);
+    }
     
     if (selectedFile && !mediaToSend) {
       if (!activeGroupId) {
@@ -469,6 +494,33 @@ const MessageInput = ({
     }
   };
 
+  const handleGenerateSmartReplies = async () => {
+    if (!enableAI || !activeGroupId) return;
+
+    const contextText = lastMessage?.content || "Hello";
+
+    setIsLoadingAi(true);
+    setSuggestions([]); 
+
+    try {
+      console.log("🤖 Generating smart replies for:", contextText);
+      // Request 3 suggestions based on "context" (or last message if backend supports it)
+      const result = await ApiClient.ai.smartReply(
+          activeGroupId, 
+          contextText, // 👈 Use the variable here
+          3
+      );
+      if (result.suggestions) {
+        setSuggestions(result.suggestions);
+      }
+    } catch (error) {
+      console.error("AI Error:", error);
+      setError("Failed to generate replies");
+    } finally {
+      setIsLoadingAi(false);
+    }
+  };
+
   // Focus the input when it becomes enabled
   useEffect(() => {
     if (!disabled && textareaRef.current) {
@@ -609,6 +661,24 @@ const MessageInput = ({
       <div className="flex items-end gap-3">
         {/* Left side - Attachment and Voice buttons */}
         <div className="flex items-center gap-1">
+          {/* ✅ NEW: Magic Wand Button (Add this before the Mic button) */}
+          {enableAI && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleGenerateSmartReplies();
+              }}
+              disabled={disabled || isLoadingAi}
+              className={`p-2 rounded-lg transition-all ${
+                isLoadingAi ? 'animate-pulse opacity-50' : 'hover:bg-purple-100 dark:hover:bg-purple-900/30'
+              }`}
+              style={{ color: colors.textSecondary }}
+              title="Generate AI Suggestions"
+            >
+              ✨
+            </button>
+          )}
+
           {/* Voice Recording Button */}
           <div className="relative">
             <button
@@ -655,6 +725,25 @@ const MessageInput = ({
             </button>
           </div>
         </div>
+
+        {/* ✅ NEW: Suggestions Bar (Place above input) */}
+        {suggestions.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 px-4 mb-2 scrollbar-hide">
+            {suggestions.map((text, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setMessage(text);
+                  setSuggestions([]);
+                  textareaRef.current?.focus();
+                }}
+                className="whitespace-nowrap px-3 py-1 rounded-full text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-700 transition-all"
+              >
+                ✨ {text}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Message textarea and send button - same as before */}
         <div className="flex-1 relative">

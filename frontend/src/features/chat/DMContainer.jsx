@@ -981,6 +981,7 @@ const handleSendMessage = async (messageData) => {
             colors={colors}
             isDM={true}
             isPending={!!pendingDMInfo && !activeDM}
+            enableAI={false}
           />
         </div>
         
@@ -992,6 +993,7 @@ const handleSendMessage = async (messageData) => {
             isDarkMode={isDarkMode}
             colors={colors}
             loading={loading && !loadedDMs.has(activeDM?.id)}
+            enableAI={false}
           />
           {/* Add this empty div for scrolling reference */}
           <div ref={messagesEndRef} />
@@ -1021,6 +1023,7 @@ const handleSendMessage = async (messageData) => {
             colors={colors}
             activeGroupId={activeDM?.id}
             onTyping={handleTyping}
+            enableAI={false}
           />
         </div>
       </div>

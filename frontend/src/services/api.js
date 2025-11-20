@@ -186,13 +186,14 @@ class ApiClient {
     getGroups: () => 
       ApiClient.request('/groups'),
 
-    // Create a new group
-    createGroup: (groupName, memberIds = []) => 
+    // UPDATED: Accepting aiEnabled flag
+    createGroup: (groupName, memberIds = [], aiEnabled = false) => 
       ApiClient.request('/group/create', {
         method: 'POST',
         body: {
           group_name: groupName,
-          member_ids: memberIds
+          member_ids: memberIds,
+          ai_enabled: aiEnabled // New field for backend
         }
       }),
 
@@ -290,6 +291,41 @@ if (!(userPrivateKey instanceof Uint8Array)) {
     // Get dashboard statistics
     getDashboardStats: () => 
       ApiClient.request('/dashboard/stats')
+  };
+
+  // ======================
+  // AI ENDPOINTS (NEW)
+  // ======================
+  static ai = {
+    translate: (groupId, text) =>
+      ApiClient.request('/ai/translate', {
+        method: 'POST',
+        body: { group_id: groupId, text }
+      }),
+
+    summarize: (groupId, messages, mode = 'hybrid', style = 'structured') =>
+      ApiClient.request(`/ai/summarize?groupId=${groupId}`, {
+        method: 'POST',
+        body: { messages, mode, style }
+      }),
+
+    checkToxicity: (groupId, text) =>
+      ApiClient.request('/ai/check-toxicity', {
+        method: 'POST',
+        body: { group_id: groupId, text }
+      }),
+
+    extractDeadlines: (groupId, messages) =>
+      ApiClient.request(`/ai/extract-deadlines?groupId=${groupId}`, {
+        method: 'POST',
+        body: { messages }
+      }),
+
+    smartReply: (groupId, message, numSuggestions = 5) =>
+      ApiClient.request(`/ai/smart-reply?groupId=${groupId}`, {
+        method: 'POST',
+        body: { message, num_suggestions: numSuggestions }
+      })
   };
 
   // ======================

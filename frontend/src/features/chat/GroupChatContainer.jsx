@@ -130,8 +130,8 @@ import AddMemberModal from '../groups/AddMemberModal';
       console.log('🔍 Filtering messages for active group:', groupId);
 
       // Get messages from both sources for THIS group only
-      const localGroupMessages = localMessages.filter(msg => msg.groupId === groupId);
-      const realtimeGroupMessages = realTimeMessages.filter(msg => msg.groupId === groupId);
+      const localGroupMessages = localMessages.filter(msg => String(msg.groupId) === String(groupId));
+      const realtimeGroupMessages = realTimeMessages.filter(msg => String(msg.groupId) === String(groupId));
 
       console.log(`📊 Local messages for group ${groupId}:`, localGroupMessages.length);
       console.log(`📊 Real-time messages for group ${groupId}:`, realtimeGroupMessages.length);
@@ -233,7 +233,8 @@ import AddMemberModal from '../groups/AddMemberModal';
               memberCount: memberCount,
               isOnline: false, // Will be updated when group members are loaded
               createdBy: group.createdBy || group.created_by,
-              isDirect: group.isDirect || group.is_direct || false
+              isDirect: group.isDirect || group.is_direct || false,
+              aiEnabled: group.aiEnabled || group.ai_enabled || false
             };
           });
           
@@ -608,6 +609,44 @@ import AddMemberModal from '../groups/AddMemberModal';
       }
     }, [realTimeMessages, localMessages, activeGroup, user]);
 
+    const handleAiAction = async (actionType) => {
+      if (!activeGroup?.id) return;
+
+      // Use the localMessages state we already have
+      // Filter to get only text messages (AI can't read images yet usually)
+      const textMessages = localMessages
+        .filter(msg => msg.type === 'text' && msg.content)
+        .map(msg => ({
+          sender_name: msg.senderName,
+          content: msg.content,
+          time_stamp: msg.timestamp
+        }))
+        .slice(-50); // Send last 50 messages context
+
+      try {
+        if (actionType === 'summarize') {
+          const result = await ApiClient.ai.summarize(activeGroup.id, textMessages);
+          alert(`📝 Summary:\n\n${result.summary}`); // Simple alert for now, or use a Modal
+        } 
+        else if (actionType === 'deadlines') {
+          const result = await ApiClient.ai.extractDeadlines(activeGroup.id, textMessages);
+          const deadlines = result.results[0]?.deadlines || [];
+          
+          if (deadlines.length === 0) {
+            alert("No upcoming deadlines found.");
+          } else {
+            const text = deadlines.map(d => 
+              `• ${d.date_text} (${d.context})`
+            ).join('\n');
+            alert(`📅 Upcoming Deadlines:\n\n${text}`);
+          }
+        }
+      } catch (error) {
+        console.error("AI Action Failed:", error);
+        alert("Failed to perform AI action.");
+      }
+    };
+
     // ADD THIS EFFECT - Auto-hide sidebars on mobile when group is selected
     useEffect(() => {
       if (activeGroup) {
@@ -647,6 +686,8 @@ import AddMemberModal from '../groups/AddMemberModal';
       isCreateModalOpen,
       isConnected
     });
+
+    const lastMessage = allMessages.length > 0 ? allMessages[allMessages.length - 1] : null;
 
     return (
       <div className="flex h-screen theme-bg flex-col sm:flex-row">
@@ -765,6 +806,8 @@ import AddMemberModal from '../groups/AddMemberModal';
                 // You'll need to create state for AddMemberModal in ChatContainer
                 setShowAddMemberModal(true);
               }}
+              enableAI={activeGroup?.aiEnabled}
+              onAiAction={handleAiAction}
             />
           </div>
           
@@ -776,10 +819,13 @@ import AddMemberModal from '../groups/AddMemberModal';
               isDarkMode={isDarkMode}
               colors={colors}
               loading={loading && !loadedGroups.has(activeGroup?.id)}
+              enableAI={activeGroup?.aiEnabled}
             />
             {/* Add this empty div for scrolling reference */}
             <div ref={messagesEndRef} />
           </div>
+
+          
           
           {/* 🆕 FIX: Make MessageInput sticky at bottom on mobile */}
           <div className="sticky bottom-0 z-10 bg-inherit sm:static">
@@ -796,6 +842,8 @@ import AddMemberModal from '../groups/AddMemberModal';
               isDarkMode={isDarkMode}
               colors={colors}
               activeGroupId={activeGroup?.id}
+              enableAI={activeGroup?.aiEnabled}
+              lastMessage={lastMessage}  //for smart reply context
             />
           </div>
         </div>

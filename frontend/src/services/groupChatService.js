@@ -31,9 +31,10 @@ class GroupChatService {
    * Create a new group with specified members
    * @param {string} groupName - Name of the group
    * @param {Array<number>} memberIds - Array of user IDs to include in the group
+   * @param {boolean} aiEnabled - Whether to enable AI features
    * @returns {Promise<Object>} Created group object
    */
-  static async createGroup(groupName, memberIds) {
+  static async createGroup(groupName, memberIds, aiEnabled = false) {   //updated signature
     try {
       if (!groupName || groupName.trim().length === 0) {
         throw new Error('Group name is required');
@@ -44,7 +45,7 @@ class GroupChatService {
       }
 
       // Step 1️⃣ - Create the group
-      const groupResponse = await ApiClient.chat.createGroup(groupName.trim(), memberIds);
+      const groupResponse = await ApiClient.chat.createGroup(groupName.trim(), memberIds, aiEnabled);
       console.log('✅ Created group:', groupResponse);
 
       const groupId = groupResponse.group_id || groupResponse.groupId;
@@ -223,7 +224,8 @@ class GroupChatService {
       isOnline: true,
       createdBy: group.createdBy || group.created_by,
       isDirect: group.isDirect || group.is_direct || false,
-      createdAt: group.createdAt || group.created_at
+      createdAt: group.createdAt || group.created_at,
+      aiEnabled: group.aiEnabled || group.ai_enabled || false
     };
   }
 
