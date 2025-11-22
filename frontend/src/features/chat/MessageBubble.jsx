@@ -4,10 +4,14 @@ import AuthenticatedImage from './AuthenticatedImage';
 import { decryptFile } from '../../utils/cryptoUtils';
 import * as keyCache from '../../services/keyCache'; // to get group or user key
 import { useDecryptedMedia } from '../../hooks/useDecryptedMedia';
+import ApiClient from '../../services/api';
 
-const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
+const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors, enableAI }) => {
   const { token } = useAuth();
   const [isDownloading, setIsDownloading] = useState(false);
+
+  const [translatedText, setTranslatedText] = useState(null);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   const formatTimestamp = (timestamp) => {
     const now = new Date();
@@ -21,6 +25,28 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors }) => {
     if (diffInHours < 24) return `${diffInHours}h`;
     if (diffInDays < 7) return `${diffInDays}d`;
     return messageTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  // Handle translate
+  const handleTranslate = async () => {
+      if (translatedText) {
+          setTranslatedText(null); // Toggle off
+          return;
+      }
+      
+      setIsTranslating(true);
+      try {
+          // Ensure we have groupId. Prop might need to be passed if not present.
+          // Message object usually has groupId.
+          console.log("🌐 [MESSAGE_BUBBLE] Requesting translation for message:", message);
+          const result = await ApiClient.ai.translate(message.groupId, message.content);
+          setTranslatedText(result.translated_text);
+      } catch (err) {
+          console.error("Translation failed", err);
+          alert("Could not translate message");
+      } finally {
+          setIsTranslating(false);
+      }
   };
 
   const formatFullTimestamp = (timestamp) => {
@@ -547,7 +573,17 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
           }}
         >
           {hasContent && (
-            <div className="whitespace-pre-wrap">{message.content}</div>
+            <div className="whitespace-pre-wrap">
+              {message.content}
+
+              {/* ✅ NEW: Translation Result */}
+              {translatedText && (
+                  <div className="mt-2 pt-2 border-t border-gray-500/30 text-sm italic opacity-90">
+                      <span className="text-xs font-bold mr-1">🌐:</span>
+                      {translatedText}
+                  </div>
+              )}
+            </div>
           )}
 
           {hasContent && hasMedia && <div className="my-2 border-t border-gray-300 dark:border-gray-600"></div>}
@@ -558,6 +594,18 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
               ? (isDarkMode ? 'text-gray-700' : 'text-gray-300')
               : 'theme-text-secondary'
             }`}>
+
+            {/* ✅ NEW: Translate Button (Only if AI on & not me) */}
+            {enableAI && !isCurrentUser && hasContent && (
+                <button 
+                    onClick={handleTranslate}
+                    className="mr-2 text-xs opacity-50 hover:opacity-100 transition-opacity"
+                    title="Translate message"
+                >
+                    {isTranslating ? '...' : '🌐'}
+                </button>
+            )}  
+
             <span title={formatFullTimestamp(message.timestamp)}>
               {formatTimestamp(message.timestamp)}
             </span>

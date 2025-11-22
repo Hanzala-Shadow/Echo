@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -10,10 +10,14 @@ const ChatHeader = ({
   colors, 
   isDM = false, 
   isPending = false,
-  onAddMember // ADD THIS PROP - function to open add member modal
+  onAddMember, // ADD THIS PROP - function to open add member modal
+  enableAI,
+  onAiAction
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth(); // ADD THIS - get current user
+
+  const [showAiTools, setShowAiTools] = useState(false);
   
   if (!group && !isPending) {
     return (
@@ -25,6 +29,19 @@ const ChatHeader = ({
       </div>
     );
   }
+
+  const handleSummarize = async () => {
+      // You typically need the last ~50 messages. 
+      // Ideally, ChatContainer should handle this logic via a callback 
+      // like `onAiAction('summarize')` because ChatHeader doesn't have the messages.
+      if (onAiAction) onAiAction('summarize');
+      setShowAiTools(false);
+  };
+
+  const handleDeadlines = async () => {
+      if (onAiAction) onAiAction('deadlines');
+      setShowAiTools(false);
+  };
 
   const getInitials = (name) => {
     return name
@@ -143,6 +160,30 @@ const ChatHeader = ({
           }`}></div>
           <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
         </div>
+
+        {/* ✅ FIX: Only show if AI is enabled for this group */}
+        {enableAI && (
+            <div className="relative">
+                <button 
+                    onClick={() => setShowAiTools(!showAiTools)}
+                    className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-purple-500"
+                    title="AI Tools"
+                >
+                    ✨
+                </button>
+                
+                {showAiTools && (
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border theme-border z-50 p-1">
+                        <button onClick={handleSummarize} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex gap-2">
+                            📝 <span>Summarize Chat</span>
+                        </button>
+                        <button onClick={handleDeadlines} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex gap-2">
+                            📅 <span>Extract Deadlines</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+        )}
       </div>
     </div>
   );

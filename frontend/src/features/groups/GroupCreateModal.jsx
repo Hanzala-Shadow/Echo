@@ -20,6 +20,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
+  const [aiEnabled, setAiEnabled] = useState(false);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -31,6 +32,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
       setSearchQuery('');
       setAvailableUsers([]);
       setSelectedUsers([]);
+      setAiEnabled(false); // Reset AI flag
       setError('');
     }
   }, [isOpen]);
@@ -118,7 +120,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
 
       
       // Create the group via service
-      const newGroup = await GroupChatService.createGroup(groupName.trim(), memberIds);
+      const newGroup = await GroupChatService.createGroup(groupName.trim(), memberIds, aiEnabled);
       
       // Transform the response for consistency
       const transformedGroup = {
@@ -128,7 +130,8 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
         memberCount: memberIds.length + 1, // Include creator
         isOnline: true,
         createdBy: currentUserId,
-        isDirect: false // Groups are never direct
+        isDirect: false, // Groups are never direct
+        aiEnabled: newGroup.ai_enabled || aiEnabled
       };
 
       // Notify parent component
@@ -212,6 +215,29 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                       : 'bg-white text-gray-900 border-gray-300'
                   } border`}
                 />
+              </div>
+
+              {/* NEW: AI Toggle */}
+              <div className={`p-4 rounded-lg border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-blue-50 border-blue-100'}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className={`text-sm font-semibold ${isDarkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+                      ✨ Enable AI Features
+                    </h4>
+                    <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Smart Replies, Translations, Summaries, and Toxicity Checks.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer"
+                      checked={aiEnabled}
+                      onChange={(e) => setAiEnabled(e.target.checked)}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
               </div>
             </div>
           )}

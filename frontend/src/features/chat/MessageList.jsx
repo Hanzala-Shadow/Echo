@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import MessageBubble from './MessageBubble';
 import Skeleton from '../../components/ui/Skeleton';    // UPDATED
 
-const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading = false }) => {
+const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading = false, enableAI }) => {
   const scrollRef = useRef(null);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
   const prevMessagesLengthRef = useRef(0);
@@ -142,6 +142,7 @@ const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading
                   isDarkMode={isDarkMode}
                   colors={colors}
                   showSender={showSender}
+                  enableAI={enableAI}
                 />
               );
             })}
