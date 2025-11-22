@@ -630,13 +630,13 @@ import AddMemberModal from '../groups/AddMemberModal';
         } 
         else if (actionType === 'deadlines') {
           const result = await ApiClient.ai.extractDeadlines(activeGroup.id, textMessages);
-          const deadlines = result.results[0]?.deadlines || [];
-          
-          if (deadlines.length === 0) {
+          const allDeadlines = result.results.flatMap(r => r.deadlines || []);
+  
+          if (allDeadlines.length === 0) {
             alert("No upcoming deadlines found.");
           } else {
-            const text = deadlines.map(d => 
-              `• ${d.date_text} (${d.context})`
+            const text = allDeadlines.map(d => 
+              `• ${d.date_text}: ${d.context} (from ${d.sender_name || 'Unknown'})`
             ).join('\n');
             alert(`📅 Upcoming Deadlines:\n\n${text}`);
           }

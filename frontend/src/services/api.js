@@ -87,9 +87,10 @@ class ApiClient {
         console.log('📦 Request body:', config.body);
       }
 
-      // Add timeout to prevent hanging requests
+      const timeoutDuration = options.timeout || 10000;
+      
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), timeoutDuration); 
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...config,
@@ -149,7 +150,7 @@ class ApiClient {
       
       // Handle network errors specifically
       if (error.name === 'AbortError') {
-        throw new Error('Request timeout - Please check your network connection');
+        throw new Error('Request timeout - The AI service took too long to respond.');
       } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
         throw new Error('Network error - Unable to connect to server. Please check if the backend is running.');
       }
@@ -300,31 +301,36 @@ if (!(userPrivateKey instanceof Uint8Array)) {
     translate: (groupId, text) =>
       ApiClient.request('/ai/translate', {
         method: 'POST',
-        body: { group_id: groupId, text }
+        body: { group_id: groupId, text },
+        timeout: 120000
       }),
 
     summarize: (groupId, messages, mode = 'hybrid', style = 'structured') =>
       ApiClient.request(`/ai/summarize?groupId=${groupId}`, {
         method: 'POST',
-        body: { messages, mode, style }
+        body: { messages, mode, style },
+        timeout: 300000
       }),
 
     checkToxicity: (groupId, text) =>
       ApiClient.request('/ai/check-toxicity', {
         method: 'POST',
-        body: { group_id: groupId, text }
+        body: { group_id: groupId, text },
+        timeout: 10000
       }),
 
     extractDeadlines: (groupId, messages) =>
       ApiClient.request(`/ai/extract-deadlines?groupId=${groupId}`, {
         method: 'POST',
-        body: { messages }
+        body: { messages },
+        timeout: 120000
       }),
 
     smartReply: (groupId, message, numSuggestions = 5) =>
       ApiClient.request(`/ai/smart-reply?groupId=${groupId}`, {
         method: 'POST',
-        body: { message, num_suggestions: numSuggestions }
+        body: { message, num_suggestions: numSuggestions },
+        timeout: 120000
       })
   };
 
