@@ -34,6 +34,35 @@ const getApiBaseUrl = () => {
   }
 };
 
+const waitForUserPrivateKey = async (maxAttempts = 5, delayMs = 200) => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const privateKey = await keyCache.getUserPrivateKey();
+    
+    if (privateKey) {
+      console.log(`✅ User private key found on attempt ${attempt}`);
+      return privateKey;
+    }
+    
+    if (attempt < maxAttempts) {
+      console.log(`⏳ Waiting for private key... (attempt ${attempt}/${maxAttempts})`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  console.warn(`⚠️ Private key not available after ${maxAttempts} attempts`);
+  return null;
+};
+
+// Helper function for base64 conversion
+const base64ToUint8 = (base64) => {
+  const binaryString = window.atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+};
+
 const API_BASE_URL = getApiBaseUrl();
 
 class ApiClient {
@@ -212,76 +241,155 @@ class ApiClient {
     // getGroupMessages: (groupId, limit = 50, offset = 0) => 
     //   ApiClient.request(`/groups/${groupId}/messages?limit=${limit}&offset=${offset}`),
   getGroupMessages: async (groupId) => {
-    // 1️⃣ Fetch messages from backend
-    const resp = await ApiClient.request(`/groups/${groupId}/messages`);
-    console.log("🧩 [DEBUG] getGroupMessages raw response:", resp);
+    try {
+      // 1️⃣ Fetch messages from backend
+      const resp = await ApiClient.request(`/groups/${groupId}/messages`);
+      console.log("🧩 [getGroupMessages] Raw response:", resp);
 
-    const messages = resp.messages || [];
+      const messages = resp.messages || resp || [];
 
-    // 2️⃣ Check if group key is already cached
-    let groupKey = await keyCache.getGroupKey(groupId);
-    console.warn(`Group Key for group ${groupId}:`, groupKey);
+      // If no messages, return early
+      if (!Array.isArray(messages) || messages.length === 0) {
+        console.log("📭 No messages to decrypt for group", groupId);
+        return [];
+      }
 
-    // 3️⃣ If not cached, fetch & unwrap group key
-    if (!groupKey) {
-      console.warn(`⚠️ No group key in cache for group ${groupId}, fetching...`);
-
+      // 2️⃣ Get current user info
       const currentUser = JSON.parse(localStorage.getItem("user"));
       if (!currentUser) {
-      console.warn("⚠️ No logged-in user available for group key fetch");
-      return messages; // fallback
+        console.warn("⚠️ No logged-in user, returning unencrypted messages");
+        return messages;
       }
 
-      let userPrivateKey = await keyCache.getUserPrivateKey();
+      // 3️⃣ Wait for user's private key (with retry logic)
+      console.log("🔑 Attempting to get user private key...");
+      let userPrivateKey = await waitForUserPrivateKey(5, 200); // 5 attempts, 200ms each
 
-      console.warn(`⚠️ User Private Key : ${userPrivateKey}`);
+      // If still no key after waiting, try to fetch from backend
+      if (!userPrivateKey) {
+        console.log("🔄 Private key not in cache, checking backend...");
+        
+        try {
+          const keysData = await ApiClient.keys.getUserKeys(
+            currentUser.userId, 
+            currentUser.token
+          );
+          
+          if (keysData?.encryptedPrivateKey) {
+            console.warn("⚠️ Found encrypted private key on backend, but need password to decrypt");
+            console.warn("⚠️ Messages will not be decrypted. User may need to re-login.");
+            return messages; // Return unencrypted
+          }
+        } catch (error) {
+          console.error("❌ Failed to fetch keys from backend:", error);
+        }
+        
+        console.warn("⚠️ No private key available, returning unencrypted messages");
+        return messages;
+      }
 
-if (!(userPrivateKey instanceof Uint8Array)) {
-    // If stored as Base64 or ArrayBuffer, convert:
-    if (typeof userPrivateKey === "string") {
-        userPrivateKey = base64ToUint8(userPrivateKey);
-    } else if (userPrivateKey instanceof ArrayBuffer) {
-        userPrivateKey = new Uint8Array(userPrivateKey);
-    } else {
-        throw new Error("User private key is not a valid Uint8Array");
-    }
-}
-        groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
-        groupId,
-        currentUser.userId,      // logged-in user id
-        userPrivateKey // user's private key
+      // 4️⃣ Validate and convert private key to Uint8Array
+      if (!(userPrivateKey instanceof Uint8Array)) {
+        console.log("🔄 Converting private key to Uint8Array");
+        
+        try {
+          if (typeof userPrivateKey === "string") {
+            userPrivateKey = base64ToUint8(userPrivateKey);
+          } else if (userPrivateKey instanceof ArrayBuffer) {
+            userPrivateKey = new Uint8Array(userPrivateKey);
+          } else {
+            console.warn("⚠️ Private key in unexpected format, returning unencrypted messages");
+            return messages;
+          }
+        } catch (error) {
+          console.error("❌ Failed to convert private key:", error);
+          return messages;
+        }
+      }
+
+      console.log("✅ User private key validated and ready");
+
+      // 5️⃣ Check if group key is cached
+      let groupKey = await keyCache.getGroupKey(groupId);
+      console.log(`🔑 Group key for group ${groupId}:`, groupKey ? "Found in cache" : "Not in cache");
+
+      // 6️⃣ If not cached, fetch & unwrap group key
+      if (!groupKey) {
+        console.log(`🔄 Fetching and unwrapping group key for group ${groupId}...`);
+        
+        try {
+          groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
+            groupId,
+            currentUser.userId,
+            userPrivateKey
+          );
+
+          if (groupKey) {
+            // Cache for later use
+            await keyCache.setGroupKey(groupId, groupKey, false);
+            console.log("✅ Group key fetched, unwrapped, and cached");
+          } else {
+            console.warn(`⚠️ Could not unwrap group key for group ${groupId}`);
+            console.warn("⚠️ Returning unencrypted messages");
+            return messages;
+          }
+        } catch (error) {
+          console.error(`❌ Error fetching/unwrapping group key for group ${groupId}:`, error);
+          return messages; // Return unencrypted as fallback
+        }
+      }
+
+      // 7️⃣ Decrypt messages using the group key
+      console.log(`🔓 Decrypting ${messages.length} messages for group ${groupId}...`);
+      
+      const decryptedMessages = await Promise.all(
+        messages.map(async (msg, index) => {
+          let decryptedContent = msg.content;
+
+          try {
+            if (msg.content && groupKey) {
+              // Parse the encrypted content
+              let encrypted;
+              if (typeof msg.content === 'string') {
+                try {
+                  encrypted = JSON.parse(msg.content);
+                } catch (parseError) {
+                  // If it's not JSON, it might already be decrypted
+                  console.log(`📝 Message ${index + 1} content is not JSON, assuming plaintext`);
+                  return {
+                    ...msg,
+                    content: msg.content
+                  };
+                }
+              } else {
+                encrypted = msg.content;
+              }
+              
+              // Decrypt the message
+              decryptedContent = await decryptMessage(encrypted, groupKey);
+              console.log(`✅ Decrypted message ${index + 1}`);
+            }
+          } catch (e) {
+            console.error(`❌ Decryption failed for message ${msg.messageId || index}:`, e);
+            // Keep original content if decryption fails
+            decryptedContent = msg.content;
+          }
+
+          return {
+            ...msg,
+            content: decryptedContent
+          };
+        })
       );
 
-      if (groupKey) {
-        // Cache for later use
-        await keyCache.setGroupKey(groupId, groupKey, false);
-      } else {
-        console.warn(`⚠️ Could not fetch/unpack group key for group ${groupId}`);
-      }
+      console.log(`✅ Successfully processed ${decryptedMessages.length} messages for group ${groupId}`);
+      return decryptedMessages;
+
+    } catch (error) {
+      console.error("❌ Error in getGroupMessages:", error);
+      throw error;
     }
-
-    // 4️⃣ Decrypt messages using the group key
-    const decryptedMessages = await Promise.all(messages.map(async (msg) => {
-      let decryptedContent = msg.content;
-
-      try {
-        if (msg.content && groupKey) {
-          // Parse the JSON string stored in DB: { iv, ciphertext }
-          const encrypted = JSON.parse(msg.content);
-          decryptedContent = await decryptMessage(encrypted, groupKey);
-        }
-      } catch (e) {
-        console.error('❌ Message decryption failed for', msg.messageId, e);
-      }
-
-      return {
-        ...msg,
-        content: decryptedContent
-      };
-    }));
-
-    return decryptedMessages;
-},
+  },
 
     // Get members of a specific group
     getGroupMembers: (groupId) => 
