@@ -7,3 +7,4 @@ torch
 sentencepiece
 python-dateutil
 langdetect
+protobuf>=3.20.0

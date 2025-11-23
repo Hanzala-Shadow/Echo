@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "logs: chatapp-db",
+      "type": "shell",
+      "command": "docker logs -f chatapp-db",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: chatapp-backend",
+      "type": "shell",
+      "command": "docker logs -f chatapp-backend",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: chatapp-frontend",
+      "type": "shell",
+      "command": "docker logs -f chatapp-frontend",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: chatapp-pgadmin",
+      "type": "shell",
+      "command": "docker logs -f chatapp-pgadmin",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: translation_service",
+      "type": "shell",
+      "command": "docker logs -f translation_service",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: summarizer_service",
+      "type": "shell",
+      "command": "docker logs -f summarizer_service",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: toxicity_service",
+      "type": "shell",
+      "command": "docker logs -f toxicity_service",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: deadline_service",
+      "type": "shell",
+      "command": "docker logs -f deadline_service",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: smart_reply_service",
+      "type": "shell",
+      "command": "docker logs -f smart_reply_service",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "logs: all",
+      "dependsOn": [
+        "logs: chatapp-db",
+        "logs: chatapp-backend",
+        "logs: chatapp-frontend",
+        "logs: chatapp-pgadmin",
+        "logs: translation_service",
+        "logs: summarizer_service",
+        "logs: toxicity_service",
+        "logs: deadline_service",
+        "logs: smart_reply_service"
+      ],
+      "group": "build"
+    }
+  ]
+}

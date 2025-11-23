@@ -1,19 +1,9 @@
 """
-Download all AI models locally for offline use
+Download AI models locally for offline use
 Run this ONCE before building Docker containers
 """
 import os
-from transformers import (
-    M2M100ForConditionalGeneration, 
-    M2M100Tokenizer,
-    MarianMTModel, 
-    MarianTokenizer,
-    AutoTokenizer,
-    AutoModelForSequenceClassification,
-    AutoModelForSeq2SeqLM,
-    AutoModelForCausalLM,
-    AutoConfig
-)
+from transformers import MarianMTModel, MarianTokenizer
 
 # Set longer timeout and cache directory
 os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '600'
@@ -26,28 +16,12 @@ def download_translation_models():
     
     cache_dir = "./models/translation"
     
-    # Roman Urdu transliteration models
-    print("\n1. Roman Urdu → Urdu tokenizer...")
-    M2M100Tokenizer.from_pretrained("Mavkif/m2m100_rup_tokenizer_both", cache_dir=cache_dir)
-    
-    print("2. Roman Urdu → Urdu model...")
-    M2M100ForConditionalGeneration.from_pretrained("Mavkif/m2m100_rup_rur_to_ur", cache_dir=cache_dir)
-    
-    print("3. Urdu → Roman Urdu model...")
-    M2M100ForConditionalGeneration.from_pretrained("Mavkif/m2m100_rup_ur_to_rur", cache_dir=cache_dir)
-    
-    # English ↔ Urdu translation
-    print("4. English → Urdu tokenizer...")
+    # English → Urdu translation
+    print("\n1. English → Urdu tokenizer...")
     MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ur", cache_dir=cache_dir)
     
-    print("5. English → Urdu model...")
+    print("2. English → Urdu model...")
     MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-ur", cache_dir=cache_dir)
-    
-    print("6. Urdu → English tokenizer...")
-    MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-ur-en", cache_dir=cache_dir)
-    
-    print("7. Urdu → English model...")
-    MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-ur-en", cache_dir=cache_dir)
     
     print("✅ Translation models downloaded!")
 
@@ -69,6 +43,7 @@ def download_summarizer_models():
     # Chat summarizer
     print("\n2. Chat summarizer (BART)...")
     print("   - Downloading tokenizer...")
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
     AutoTokenizer.from_pretrained("philschmid/bart-large-cnn-samsum", cache_dir=cache_dir)
     print("   - Downloading model...")
     AutoModelForSeq2SeqLM.from_pretrained("philschmid/bart-large-cnn-samsum", cache_dir=cache_dir)
@@ -85,6 +60,7 @@ def download_toxicity_models():
     
     print("\n1. Multilingual toxicity classifier...")
     try:
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
         print("   - Downloading tokenizer...")
         AutoTokenizer.from_pretrained(
             "unitary/multilingual-toxic-xlm-roberta",
@@ -131,6 +107,7 @@ def download_smart_reply_models():
     cache_dir = "./models/smart_reply"
     
     print("\n1. DialoGPT-medium...")
+    from transformers import AutoTokenizer, AutoModelForCausalLM
     print("   - Downloading tokenizer...")
     AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium", cache_dir=cache_dir)
     print("   - Downloading model...")
