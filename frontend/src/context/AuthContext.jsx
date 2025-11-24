@@ -137,69 +137,103 @@ export const AuthProvider = ({ children }) => {
 const login = useCallback(async (email, password) => {
   setLoading(true);
   try {
-    console.log('AuthProvider - attempting login with email:', email);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔐 Starting login process...');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // 1️⃣ Perform backend authentication
+    console.log('1️⃣ Authenticating with backend...');
     const data = await ApiClient.auth.login(email, password);
     const token = data.token;
+    console.log('✅ Backend authentication successful');
 
     // 2️⃣ Fetch userId
+    console.log('2️⃣ Fetching user ID...');
     const userId = await getUserIdByEmail(email, token);
     if (!userId) throw new Error('Could not retrieve user ID');
+    console.log('✅ User ID retrieved:', userId);
 
-    // 3️⃣ Fetch user's encrypted private key from backend
+    // 3️⃣ CRITICAL: Set session key FIRST (before any key caching)
+    console.log('3️⃣ Generating session key from password...');
+    const sessionKey = await sha256(new TextEncoder().encode(password));
+    await keyCache.setSessionKey(sessionKey);
+    console.log('✅ Session key set in cache');
+
+    // 4️⃣ Fetch user's encrypted private key from backend
+    console.log('4️⃣ Fetching encrypted private key from backend...');
     const keyRes = await ApiClient.keys.getUserKeys(userId, token);
-    console.log("🔑 Fetched user keys:", keyRes);
+    console.log("✅ User keys fetched:", {
+      hasPublicKey: !!keyRes?.publicKey,
+      hasEncryptedPrivateKey: !!keyRes?.encryptedPrivateKey,
+      hasSalt: !!keyRes?.salt
+    });
 
     let userSecretKeyUint8 = null;
     if (keyRes?.encryptedPrivateKey && keyRes?.salt) {
-      console.log("🔓 Decrypting user private key...");
+      console.log("5️⃣ Recovering private key from password...");
       
-      // 4️⃣ Recover private key
+      // 5️⃣ Recover private key
       userSecretKeyUint8 = await recoverUserPrivateKeyFromPassword(
         password,
         keyRes.encryptedPrivateKey,
         keyRes.salt
       );
 
-      if (!userSecretKeyUint8) {
-        throw new Error("Failed to decrypt private key");
+      // Validate the recovered key
+      if (!(userSecretKeyUint8 instanceof Uint8Array)) {
+        console.error('❌ Recovered key is not Uint8Array!', {
+          type: typeof userSecretKeyUint8,
+          constructor: userSecretKeyUint8?.constructor?.name
+        });
+        throw new Error('Key recovery produced invalid key type');
       }
 
-      console.log("✅ Private key decrypted successfully");
+      console.log('✅ Private key recovered:', {
+        type: userSecretKeyUint8.constructor.name,
+        length: userSecretKeyUint8.length
+      });
 
-      // 5️⃣ Cache the session key and private key
-      const sessionKey = await sha256(new TextEncoder().encode(password));
+      // 6️⃣ Cache the decrypted key (with validation)
+      console.log('6️⃣ Caching private key...');
+      const cacheSuccess = await keyCache.setUserPrivateKey(userSecretKeyUint8, true);
       
-      // Use Promise.all to ensure both cache operations complete
-      await Promise.all([
-        keyCache.setSessionKey(sessionKey),
-        keyCache.setUserPrivateKey(userSecretKeyUint8, true)
-      ]);
+      if (!cacheSuccess) {
+        console.error('❌ Failed to cache private key!');
+        throw new Error('Failed to cache private key');
+      }
       
-      console.log("✅ Keys cached successfully");
+      console.log('✅ Private key cached successfully');
 
-      // 6️⃣ Verify the cache worked (optional but recommended for debugging)
+      // 7️⃣ CRITICAL: Verify the cache immediately
+      console.log('7️⃣ Verifying cache...');
       const cachedKey = await keyCache.getUserPrivateKey();
+      
       if (!cachedKey) {
-        console.warn("⚠️ Private key was not cached properly!");
-        // Try one more time
+        console.error('❌ Cache verification failed - key not found!');
+        // Retry once
+        console.log('🔄 Retrying cache...');
         await keyCache.setUserPrivateKey(userSecretKeyUint8, true);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
         const retryCachedKey = await keyCache.getUserPrivateKey();
+        
         if (!retryCachedKey) {
-          console.error("❌ Failed to cache private key after retry");
-        } else {
-          console.log("✅ Private key cached on retry");
+          throw new Error('Failed to cache private key after retry');
         }
+        console.log('✅ Cache successful on retry');
       } else {
-        console.log("✅ Verified: Private key is in cache");
+        console.log('✅ Cache verification passed:', {
+          type: cachedKey.constructor.name,
+          length: cachedKey.length,
+          matches: cachedKey.length === userSecretKeyUint8.length
+        });
       }
 
     } else {
       console.warn("⚠️ No encrypted key found — user may need re-registration");
     }
 
-    // 7️⃣ Set user state and localStorage
+    // 8️⃣ Set user state and localStorage
+    console.log('8️⃣ Setting user state...');
     const loggedInUser = {
       email,
       token,
@@ -210,19 +244,25 @@ const login = useCallback(async (email, password) => {
     
     setUser(loggedInUser);
     localStorage.setItem("user", JSON.stringify(loggedInUser));
+    console.log('✅ User state set');
 
-    // 8️⃣ Keep session password and decrypted key in memory
+    // 9️⃣ Keep session password and decrypted key in memory
     setSessionPassword({ password, secretKey: userSecretKeyUint8 });
 
-    console.log('✅ Login successful — private key decrypted, cached, and verified');
-    
-    // 9️⃣ Add a small delay to ensure state propagates
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ Login complete - ALL keys cached and verified');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // 🔟 Add a small delay to ensure everything propagates
+    await new Promise(resolve => setTimeout(resolve, 150));
+
     return loggedInUser;
 
   } catch (error) {
-    console.error('AuthProvider - login error:', error);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ Login error:', error);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     setUser(null);
     localStorage.removeItem("user");
     
