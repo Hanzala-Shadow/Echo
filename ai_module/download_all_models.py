@@ -24,31 +24,36 @@ def download_translation_models():
     MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-ur", cache_dir=cache_dir)
     
     print("✅ Translation models downloaded!")
-
+    
+    
 def download_summarizer_models():
-    """Download models for summarizer service"""
+    """Download models for summarizer service - UPDATED: No translation models"""
     print("\n" + "="*60)
     print("DOWNLOADING SUMMARIZER MODELS")
     print("="*60)
+    print("📝 Lightweight summarizer")
     
     cache_dir = "./models/summarizer"
     
-    # Urdu → English translator
-    print("\n1. Urdu → English translator...")
-    print("   - Downloading tokenizer...")
-    MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-ur-en", cache_dir=cache_dir)
-    print("   - Downloading model...")
-    MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-ur-en", cache_dir=cache_dir)
-    
-    # Chat summarizer
-    print("\n2. Chat summarizer (BART)...")
-    print("   - Downloading tokenizer...")
+    # Lightweight chat summarizer (DistilBART ~300MB)
+    print("\n1. Lightweight Chat Summarizer (DistilBART)...")
     from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-    AutoTokenizer.from_pretrained("philschmid/bart-large-cnn-samsum", cache_dir=cache_dir)
+    
+    print("   - Downloading tokenizer...")
+    AutoTokenizer.from_pretrained(
+        "sshleifer/distilbart-cnn-6-6", 
+        cache_dir=cache_dir
+    )
+    
     print("   - Downloading model...")
-    AutoModelForSeq2SeqLM.from_pretrained("philschmid/bart-large-cnn-samsum", cache_dir=cache_dir)
+    AutoModelForSeq2SeqLM.from_pretrained(
+        "sshleifer/distilbart-cnn-6-6", 
+        cache_dir=cache_dir
+    )
     
     print("✅ Summarizer models downloaded!")
+    print("   Model: sshleifer/distilbart-cnn-6-6 (~300MB)")
+    print("   Features: English + Roman Urdu support")
 
 def download_toxicity_models():
     """Download models for toxicity service"""
