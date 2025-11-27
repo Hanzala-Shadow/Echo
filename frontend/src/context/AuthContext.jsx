@@ -36,8 +36,12 @@ export const AuthProvider = ({ children }) => {
     }
     return null;
   });
-  
-  const [loading, setLoading] = useState(false);
+
+  const [loading, setLoading] = useState(() => {
+    // Initialize loading to true if we have a user in localStorage
+    // This prevents premature rendering before keys are restored
+    return !!localStorage.getItem('user');
+  });
   const [apiBaseUrl, setApiBaseUrl] = useState(null);
   const [sessionPassword, setSessionPassword] = useState(null);
 
@@ -47,12 +51,12 @@ export const AuthProvider = ({ children }) => {
   }, [user]);
 
   // Use the WebSocket hook - it will connect when userId and token are available
-  const { 
-    isConnected, 
+  const {
+    isConnected,
     messages: webSocketMessages,
-    onlineUsers, 
-    sendMessage, 
-    joinGroup, 
+    onlineUsers,
+    sendMessage,
+    joinGroup,
     leaveGroup,
     sendTypingIndicator,
     disconnect,
@@ -63,23 +67,23 @@ export const AuthProvider = ({ children }) => {
   const getApiBaseUrl = useCallback(() => {
     try {
       const hostIp = import.meta.env.VITE_HOST_IP || window.location.hostname;
-      
+
       // For Docker environment or local development, use localhost
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return 'http://localhost:8080/api';
       }
-      
+
       // Clean the host IP - use first IP
       const cleanIp = hostIp.trim().split(/\s+/)[0];
-      
+
       // Validate IP format
       if (!cleanIp || cleanIp.includes(' ')) {
         console.warn('Invalid host IP, falling back to localhost');
         return 'http://localhost:8080/api';
       }
-      
+
       const url = `http://${cleanIp}:8080/api`;
-      
+
       // Test if URL is valid
       new URL(url);
       return url;
@@ -100,9 +104,9 @@ export const AuthProvider = ({ children }) => {
   const getUserIdByEmail = useCallback(async (email, token) => {
     try {
       console.log('🔍 Fetching user ID for email:', email);
-      
+
       const baseUrl = apiBaseUrl || getApiBaseUrl();
-      
+
       const response = await fetch(`${baseUrl}/users/email/${encodeURIComponent(email)}`, {
         method: 'GET',
         headers: {
@@ -110,21 +114,21 @@ export const AuthProvider = ({ children }) => {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const userData = await response.json();
       console.log('📨 User data response:', userData);
-      
+
       const userId = userData.userId || userData.id;
       console.log('🎯 Extracted userId:', userId);
-      
+
       if (!userId) {
         throw new Error('Could not find userId in response');
       }
-      
+
       return userId;
     } catch (error) {
       console.error('❌ Error fetching user ID:', error);
@@ -133,7 +137,6 @@ export const AuthProvider = ({ children }) => {
   }, [apiBaseUrl, getApiBaseUrl]);
 
   // Login function
-  
 const login = useCallback(async (email, password) => {
   setLoading(true);
   try {
@@ -153,11 +156,15 @@ const login = useCallback(async (email, password) => {
     if (!userId) throw new Error('Could not retrieve user ID');
     console.log('✅ User ID retrieved:', userId);
 
-    // 3️⃣ CRITICAL: Set session key FIRST (before any key caching)
+    // 3️⃣ CRITICAL: Generate and set session key FIRST
     console.log('3️⃣ Generating session key from password...');
-    const sessionKey = await sha256(new TextEncoder().encode(password));
-    await keyCache.setSessionKey(sessionKey);
-    console.log('✅ Session key set in cache');
+    const sessionKeyUint8 = await sha256(new TextEncoder().encode(password));
+    await keyCache.setSessionKey(sessionKeyUint8);
+    
+    // 💾 Persist session key to localStorage for session restoration
+    const { uint8ToBase64 } = await import("../utils/cryptoUtils");
+    localStorage.setItem('sessionKey', uint8ToBase64(sessionKeyUint8));
+    console.log('✅ Session key set and persisted');
 
     // 4️⃣ Fetch user's encrypted private key from backend
     console.log('4️⃣ Fetching encrypted private key from backend...');
@@ -193,40 +200,25 @@ const login = useCallback(async (email, password) => {
         length: userSecretKeyUint8.length
       });
 
-      // 6️⃣ Cache the decrypted key (with validation)
+      // 6️⃣ Cache the decrypted key
       console.log('6️⃣ Caching private key...');
-      const cacheSuccess = await keyCache.setUserPrivateKey(userSecretKeyUint8, true);
-      
-      if (!cacheSuccess) {
-        console.error('❌ Failed to cache private key!');
-        throw new Error('Failed to cache private key');
-      }
-      
+      await keyCache.setUserPrivateKey(userSecretKeyUint8, true);
       console.log('✅ Private key cached successfully');
 
-      // 7️⃣ CRITICAL: Verify the cache immediately
+      // 7️⃣ Verify the cache immediately
       console.log('7️⃣ Verifying cache...');
       const cachedKey = await keyCache.getUserPrivateKey();
       
       if (!cachedKey) {
         console.error('❌ Cache verification failed - key not found!');
-        // Retry once
-        console.log('🔄 Retrying cache...');
-        await keyCache.setUserPrivateKey(userSecretKeyUint8, true);
-        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
-        const retryCachedKey = await keyCache.getUserPrivateKey();
-        
-        if (!retryCachedKey) {
-          throw new Error('Failed to cache private key after retry');
-        }
-        console.log('✅ Cache successful on retry');
-      } else {
-        console.log('✅ Cache verification passed:', {
-          type: cachedKey.constructor.name,
-          length: cachedKey.length,
-          matches: cachedKey.length === userSecretKeyUint8.length
-        });
+        throw new Error('Failed to verify cached private key');
       }
+      
+      console.log('✅ Cache verification passed:', {
+        type: cachedKey.constructor.name,
+        length: cachedKey.length,
+        matches: cachedKey.length === userSecretKeyUint8.length
+      });
 
     } else {
       console.warn("⚠️ No encrypted key found — user may need re-registration");
@@ -253,9 +245,6 @@ const login = useCallback(async (email, password) => {
     console.log('✅ Login complete - ALL keys cached and verified');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // 🔟 Add a small delay to ensure everything propagates
-    await new Promise(resolve => setTimeout(resolve, 150));
-
     return loggedInUser;
 
   } catch (error) {
@@ -265,6 +254,7 @@ const login = useCallback(async (email, password) => {
     
     setUser(null);
     localStorage.removeItem("user");
+    localStorage.removeItem("sessionKey");
     
     // Clear any partially cached data
     await keyCache.clearUserPrivateKey();
@@ -276,12 +266,64 @@ const login = useCallback(async (email, password) => {
   }
 }, [getUserIdByEmail]);
 
+
+  // Restore session key on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      // If no user, we're not loading anything
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const savedSessionKey = localStorage.getItem('sessionKey');
+      if (savedSessionKey) {
+        try {
+          console.log('🔐 Restoring session key from storage...');
+          const { base64ToUint8 } = await import("../utils/cryptoUtils");
+          const sessionKey = base64ToUint8(savedSessionKey);
+          await keyCache.setSessionKey(sessionKey);
+
+          // Try to restore private key from IDB
+          const privateKey = await keyCache.getUserPrivateKey();
+          if (privateKey) {
+            console.log('✅ Private key restored from cache');
+          } else {
+            console.warn('⚠️ Session key restored but private key not found in cache');
+          }
+        } catch (e) {
+          console.error('❌ Error restoring session key:', e);
+          localStorage.removeItem('sessionKey');
+        }
+      } else {
+        console.log('ℹ️ No session key found in storage');
+        // 🆕 If user is logged in but no session key, we must logout to get the key
+        if (user) {
+          console.warn("⚠️ User logged in but no session key found. Forcing logout to restore security context.");
+          // We can't call logout() directly here because it might cause a loop or issues during render
+          // Instead, we manually clear storage and state
+          localStorage.removeItem('user');
+          localStorage.removeItem('sessionKey');
+          setUser(null);
+          setSessionPassword(null);
+          // Reload the page to ensure a clean slate
+          window.location.reload();
+        }
+      }
+
+      // Done loading
+      setLoading(false);
+    };
+
+    restoreSession();
+  }, [user]); // Run when user state is initialized/changed
+
   // Register function
   const register = useCallback(async (username, email, password) => {
     setLoading(true);
     try {
       console.log('🔐 Starting registration process...');
-      
+
       // 🔹 Step 1: Generate keys and wrap private key
       console.log('🔑 Generating keypair...');
       const keyPayload = await generateAndPasswordWrapUserKey(password);
@@ -342,6 +384,7 @@ const login = useCallback(async (email, password) => {
       await keyCache.clearUserPrivateKey();
       await keyCache.clearAllGroupKeys();
       setSessionPassword(null);
+      localStorage.removeItem("sessionKey"); // Clear session key
 
       console.log('✅ Logout complete, WebSocket disconnected, keys cleared');
     }
@@ -349,11 +392,11 @@ const login = useCallback(async (email, password) => {
 
   // Optimize the context value with useMemo to prevent unnecessary re-renders
   const value = useMemo(() => ({
-    user, 
-    loading, 
-    login, 
-    register, 
-    logout, 
+    user,
+    loading,
+    login,
+    register,
+    logout,
     token: user?.token,
     sessionPassword,
     setSessionPassword,
@@ -369,11 +412,11 @@ const login = useCallback(async (email, password) => {
     showNotification,
     uploadMedia
   }), [
-    user, 
-    loading, 
-    login, 
-    register, 
-    logout, 
+    user,
+    loading,
+    login,
+    register,
+    logout,
     isConnected,
     webSocketMessages,
     onlineUsers,
@@ -387,6 +430,6 @@ const login = useCallback(async (email, password) => {
   ]);
 
   console.log('AuthProvider - providing context value:', value);
-  
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; 
+import { useNavigate } from 'react-router-dom';
 import Skeleton from '../../components/ui/Skeleton';    // UPDATED
 import ApiClient from '../../services/api';             // UPDATED
 
-const DMSidebar = ({ 
-  groups, 
-  activeGroupId, 
-  onDMSelect, 
-  isDarkMode, 
+const DMSidebar = ({
+  groups,
+  activeGroupId,
+  onDMSelect,
+  isDarkMode,
   colors,
   loading = false,
   currentUserId,
@@ -18,7 +18,7 @@ const DMSidebar = ({
   newMessageIndicator = {} // Add this prop for new message indicators
 }) => {
   const [userDetails, setUserDetails] = useState({});
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
 
   const getInitials = (name) => {
     return name
@@ -41,7 +41,7 @@ const DMSidebar = ({
             const membersData = await ApiClient.chat.getGroupMembers(group.id);
             const members = membersData?.members || [];
             const otherUserId = members.find(member => member.user_id !== currentUserId)?.user_id;
-            
+
             if (otherUserId) {
               const otherUserDetails = await ApiClient.users.getProfile(otherUserId);
               details[group.id] = otherUserDetails;
@@ -64,13 +64,13 @@ const DMSidebar = ({
   // Format timestamp for last message
   const formatLastMessageTime = (timestamp) => {
     if (!timestamp) return '';
-    
+
     const now = new Date();
     const messageTime = new Date(timestamp);
     const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
     const diffInHours = Math.floor(diffInMinutes / 60);
     const diffInDays = Math.floor(diffInHours / 24);
-    
+
     if (diffInMinutes < 1) return 'now';
     if (diffInMinutes < 60) return `${diffInMinutes}m`;
     if (diffInHours < 24) return `${diffInHours}h`;
@@ -108,7 +108,7 @@ const DMSidebar = ({
   });
 
   return (
-    <div 
+    <div
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
@@ -121,7 +121,7 @@ const DMSidebar = ({
             <button
               onClick={() => navigate('/dashboard')}
               className="p-2 rounded-lg hover-scale theme-text sm:hidden"
-              style={{ 
+              style={{
                 backgroundColor: colors.background,
                 border: `1px solid ${colors.border}`
               }}
@@ -131,13 +131,13 @@ const DMSidebar = ({
             </button>
           </div>
         </div>
-        
+
         {/* Dashboard link for desktop */}
         <div className="hidden sm:block">
           <button
             onClick={() => navigate('/dashboard')}
             className="w-full p-2 rounded-lg text-left theme-text hover-scale flex items-center gap-2"
-            style={{ 
+            style={{
               backgroundColor: colors.background,
               border: `1px solid ${colors.border}`
             }}
@@ -166,27 +166,26 @@ const DMSidebar = ({
             const isTyping = typingUsers[group.id] && typingUsers[group.id] !== currentUserId;
             const lastMessageTime = lastMessageTimestamps[group.id];
             const hasNewMessage = newMessageIndicator[group.id]; // Check if there's a new message indicator
-            
+
             return (
               <div
                 key={group.id}
                 onClick={() => onDMSelect(group)}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
-                  activeGroupId === group.id ? 'theme-surface' : ''
-                } ${hasNewMessage ? 'ring-2 ring-blue-500' : ''}`} // Add ring for new messages
+                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] ${activeGroupId === group.id ? 'theme-surface' : ''
+                  } ${hasNewMessage ? 'ring-2 ring-blue-500' : ''}`} // Add ring for new messages
                 style={{
-                  backgroundColor: activeGroupId === group.id 
-                    ? (isDarkMode ? '#374151' : '#e5e7eb')
+                  backgroundColor: activeGroupId === group.id
+                    ? colors.background
                     : 'transparent',
-                  border: activeGroupId === group.id 
-                    ? `1px solid ${colors.border}` 
+                  border: activeGroupId === group.id
+                    ? `1px solid ${colors.border}`
                     : '1px solid transparent'
                 }}
               >
                 <div className="relative">
-                  <div 
+                  <div
                     className="h-10 w-10 rounded-full flex items-center justify-center font-medium text-sm"
-                    style={{ 
+                    style={{
                       backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
                       color: isDarkMode ? '#ffffff' : '#000000'
                     }}

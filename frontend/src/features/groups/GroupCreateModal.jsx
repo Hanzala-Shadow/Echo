@@ -10,10 +10,9 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
     isDarkMode,
     colors: !!colors
   });
-  
+
   const [step, setStep] = useState(1); // 1: Group details, 2: Add members
   const [groupName, setGroupName] = useState('');
-  const [description, setDescription] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [availableUsers, setAvailableUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
@@ -28,7 +27,6 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
     if (isOpen) {
       setStep(1);
       setGroupName('');
-      setDescription('');
       setSearchQuery('');
       setAvailableUsers([]);
       setSelectedUsers([]);
@@ -57,7 +55,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
     setSearchLoading(true);
     try {
       const users = await GroupChatService.searchUsers(query);
-      
+
       // Filter out current user from search results
       const filteredUsers = users.filter(user => user.userId !== currentUserId);
       setAvailableUsers(filteredUsers);
@@ -116,17 +114,16 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
 
     try {
       // Prepare member IDs (include current user automatically)
-     const memberIds = [...selectedUsers.map(user => user.userId), currentUserId];
+      const memberIds = [...selectedUsers.map(user => user.userId), currentUserId];
 
-      
+
       // Create the group via service
       const newGroup = await GroupChatService.createGroup(groupName.trim(), memberIds, aiEnabled);
-      
+
       // Transform the response for consistency
       const transformedGroup = {
         id: newGroup.group_id,
         name: groupName.trim(),
-        description: description.trim(),
         memberCount: memberIds.length + 1, // Include creator
         isOnline: true,
         createdBy: currentUserId,
@@ -139,7 +136,7 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
 
       // Close modal
       onClose();
-      
+
     } catch (error) {
       setError(error.message || 'Failed to create group. Please try again.');
       console.error('Error creating group:', error);
@@ -191,29 +188,11 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   placeholder="Enter group name"
-                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    isDarkMode 
-                      ? 'bg-gray-700 text-white border-gray-600' 
-                      : 'bg-white text-gray-900 border-gray-300'
-                  } border`}
+                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode
+                    ? 'bg-gray-700 text-white border-gray-600'
+                    : 'bg-white text-gray-900 border-gray-300'
+                    } border`}
                   autoFocus
-                />
-              </div>
-
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Description (Optional)
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the purpose of this group"
-                  rows={3}
-                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
-                    isDarkMode 
-                      ? 'bg-gray-700 text-white border-gray-600' 
-                      : 'bg-white text-gray-900 border-gray-300'
-                  } border`}
                 />
               </div>
 
@@ -229,8 +208,8 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                     </p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="sr-only peer"
                       checked={aiEnabled}
                       onChange={(e) => setAiEnabled(e.target.checked)}
@@ -256,11 +235,10 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                   value={searchQuery}
                   onChange={handleSearchChange}
                   placeholder="Search by username"
-                  className={`w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    isDarkMode 
-                      ? 'bg-gray-700 text-white border-gray-600' 
-                      : 'bg-white text-gray-900 border-gray-300'
-                  } border`}
+                  className={`w-full px-3 py-1.5 sm:px-3 sm:py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base ${isDarkMode
+                    ? 'bg-gray-700 text-white border-gray-600'
+                    : 'bg-white text-gray-900 border-gray-300'
+                    } border`}
                   autoFocus
                 />
               </div>
@@ -273,11 +251,10 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedUsers.map(user => (
-                      <div 
-                        key={`selected-${user.userId}`} 
-                        className={`flex items-center rounded-full px-3 py-1 ${
-                          isDarkMode ? 'bg-blue-900' : 'bg-blue-100'
-                        }`}
+                      <div
+                        key={`selected-${user.userId}`}
+                        className={`flex items-center rounded-full px-3 py-1 ${isDarkMode ? 'bg-blue-900' : 'bg-blue-100'
+                          }`}
                       >
                         <span className={`text-sm ${isDarkMode ? 'text-blue-200' : 'text-blue-800'}`}>
                           {user.username}
@@ -315,15 +292,13 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                         <div
                           key={user.userId}
                           onClick={() => toggleUserSelection(user)}
-                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
-                            isSelected
-                              ? (isDarkMode ? 'bg-blue-900 border border-blue-700' : 'bg-blue-50 border border-blue-200')
-                              : (isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-50 hover:bg-gray-100')
-                          }`}
+                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${isSelected
+                            ? (isDarkMode ? 'bg-blue-900 border border-blue-700' : 'bg-blue-50 border border-blue-200')
+                            : (isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-50 hover:bg-gray-100')
+                            }`}
                         >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                            isDarkMode ? 'bg-gray-600' : 'bg-gray-300'
-                          }`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}>
                             <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                               {user.username?.charAt(0).toUpperCase() || 'U'}
                             </span>
@@ -336,11 +311,10 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                               {user.email}
                             </p>
                           </div>
-                          <div className={`w-4 h-4 rounded border ${
-                            isSelected
-                              ? 'bg-blue-500 border-blue-500'
-                              : isDarkMode ? 'border-gray-600' : 'border-gray-300'
-                          }`}>
+                          <div className={`w-4 h-4 rounded border ${isSelected
+                            ? 'bg-blue-500 border-blue-500'
+                            : isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                            }`}>
                             {isSelected && (
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -375,17 +349,16 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                 Back
               </button>
             )}
-            
+
             <div className="flex space-x-3">
               {step === 1 ? (
                 <button
                   onClick={handleNext}
                   disabled={!groupName.trim()}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
-                    groupName.trim()
-                      ? 'bg-blue-500 text-white hover:bg-blue-600'
-                      : isDarkMode ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
+                  className={`px-4 py-2 rounded-lg transition-colors ${groupName.trim()
+                    ? 'bg-blue-500 text-white hover:bg-blue-600'
+                    : isDarkMode ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
                 >
                   Next
                 </button>
@@ -393,11 +366,10 @@ const GroupCreateModal = ({ isOpen, onClose, onGroupCreated, currentUserId, isDa
                 <button
                   onClick={handleCreateGroup}
                   disabled={loading}
-                  className={`px-4 py-2 rounded-lg transition-colors flex items-center ${
-                    loading
-                      ? isDarkMode ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-500 text-white hover:bg-green-600'
-                  }`}
+                  className={`px-4 py-2 rounded-lg transition-colors flex items-center ${loading
+                    ? isDarkMode ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
                 >
                   {loading ? (
                     <>

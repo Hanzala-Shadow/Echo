@@ -1,6 +1,6 @@
 /**
  * Key Cache - Pure JavaScript Implementation
- * Fixed version with proper initialization checks
+ * Works in ANY environment (no WebCrypto dependency)
  */
 
 import { 
@@ -80,236 +80,185 @@ async function deleteIDB(storeName, key) {
 let sessionKey = null; // Uint8Array
 
 export async function setSessionKey(keyUint8) {
-  console.log('🔑 [keyCache] Setting session key');
   sessionKey = keyUint8;
-}
-
-export function getSessionKey() {
-  return sessionKey;
+  console.log('🔑 Session key set in keyCache:', {
+    hasKey: !!sessionKey,
+    length: sessionKey?.length
+  });
 }
 
 // ---------------------------
 // User private key functions
 // ---------------------------
 export async function setUserPrivateKey(keyUint8, persist = false) {
-  console.log('🔐 [keyCache] Setting user private key', {
-    type: keyUint8?.constructor?.name,
-    length: keyUint8?.length,
-    persist
-  });
+  try {
+    // Validate input
+    if (!(keyUint8 instanceof Uint8Array)) {
+      throw new Error('Invalid key type: must be Uint8Array');
+    }
 
-  // Validate input
-  if (!(keyUint8 instanceof Uint8Array)) {
-    console.error('❌ [keyCache] Invalid key type passed to setUserPrivateKey');
-    throw new Error('Key must be Uint8Array');
-  }
+    console.log('💾 Setting user private key:', {
+      keyLength: keyUint8.length,
+      persist,
+      hasSessionKey: !!sessionKey
+    });
 
-  // Store in memory first (always)
-  userPrivateKeyMemory = keyUint8;
-  console.log('✅ [keyCache] User private key stored in memory');
+    // Always set in memory
+    userPrivateKeyMemory = keyUint8;
 
-  // Optionally persist to IndexedDB
-  if (persist) {
-    if (!sessionKey) {
-      console.warn('⚠️ [keyCache] No session key available for persistence, storing unencrypted');
-      // Store unencrypted as fallback (you might want to handle this differently)
-      await setIDB(USER_STORE, {
-        id: "currentUser",
-        rawKey: uint8ToBase64(keyUint8), // Store base64 encoded
-        encrypted: false
-      });
-    } else {
-      console.log('🔒 [keyCache] Encrypting and persisting user private key');
+    // Persist to IndexedDB if requested and session key exists
+    if (persist && sessionKey) {
       const { iv, ciphertext } = await aesGcmEncryptRaw(sessionKey, keyUint8);
       await setIDB(USER_STORE, {
         id: "currentUser",
         encryptedKey: uint8ToBase64(ciphertext),
         iv: uint8ToBase64(iv),
-        encrypted: true
       });
+      console.log('✅ User private key persisted to IndexedDB');
+    } else if (persist && !sessionKey) {
+      console.warn('⚠️ Cannot persist key: no session key available');
     }
-    console.log('✅ [keyCache] User private key persisted to IndexedDB');
-  }
 
-  // Verify the memory cache
-  const verify = userPrivateKeyMemory instanceof Uint8Array;
-  console.log('🔍 [keyCache] Memory cache verification:', verify ? 'PASS' : 'FAIL');
-  
-  return verify;
+    return true; // ✅ FIXED: Always return true on success
+  } catch (error) {
+    console.error('❌ Error setting user private key:', error);
+    throw error;
+  }
 }
 
 export async function getUserPrivateKey() {
-  console.log('🔍 [keyCache] Getting user private key...');
-  
-  // 1. Check memory cache first (fastest)
+  // Return from memory if available
   if (userPrivateKeyMemory) {
-    console.log('✅ [keyCache] Found in memory cache');
-    const isValid = userPrivateKeyMemory instanceof Uint8Array;
-    console.log('🔍 [keyCache] Memory key validation:', {
-      type: userPrivateKeyMemory.constructor.name,
-      length: userPrivateKeyMemory.length,
-      isUint8Array: isValid
-    });
-    return isValid ? userPrivateKeyMemory : null;
+    console.log('✅ Retrieved user private key from memory');
+    return userPrivateKeyMemory;
   }
 
-  console.log('⏳ [keyCache] Not in memory, checking IndexedDB...');
+  // Try to load from IndexedDB if session key exists
+  if (!sessionKey) {
+    console.warn('⚠️ Cannot retrieve key from IndexedDB: no session key');
+    return null;
+  }
 
-  // 2. Try to load from IndexedDB
   try {
     const record = await getIDB(USER_STORE, "currentUser");
-    
     if (!record) {
-      console.log('❌ [keyCache] No key found in IndexedDB');
+      console.warn('⚠️ No user private key found in IndexedDB');
       return null;
     }
 
-    console.log('📦 [keyCache] Found key record in IndexedDB', {
-      encrypted: record.encrypted
-    });
-
-    let key;
-
-    // Handle unencrypted stored keys (fallback)
-    if (record.encrypted === false && record.rawKey) {
-      console.log('🔓 [keyCache] Loading unencrypted key from IndexedDB');
-      key = base64ToUint8(record.rawKey);
-    }
-    // Handle encrypted stored keys (normal case)
-    else if (record.encrypted !== false && record.encryptedKey && record.iv) {
-      if (!sessionKey) {
-        console.warn('⚠️ [keyCache] Session key not available, cannot decrypt');
-        return null;
-      }
-      console.log('🔓 [keyCache] Decrypting key from IndexedDB');
-      const iv = base64ToUint8(record.iv);
-      const ciphertext = base64ToUint8(record.encryptedKey);
-      key = await aesGcmDecryptRaw(sessionKey, iv, ciphertext);
-    } else {
-      console.error('❌ [keyCache] Invalid key record format');
-      return null;
-    }
-
-    // Validate and cache
-    if (key instanceof Uint8Array) {
-      userPrivateKeyMemory = key;
-      console.log('✅ [keyCache] Key loaded and cached in memory');
-      return key;
-    } else {
-      console.error('❌ [keyCache] Loaded key is not Uint8Array');
-      return null;
-    }
+    const iv = base64ToUint8(record.iv);
+    const ciphertext = base64ToUint8(record.encryptedKey);
+    const key = await aesGcmDecryptRaw(sessionKey, iv, ciphertext);
+    
+    // Cache in memory
+    userPrivateKeyMemory = key;
+    console.log('✅ Retrieved and decrypted user private key from IndexedDB');
+    
+    return key;
   } catch (error) {
-    console.error('❌ [keyCache] Error loading key from IndexedDB:', error);
+    console.error('❌ Error retrieving user private key:', error);
     return null;
   }
 }
 
 export async function clearUserPrivateKey() {
-  console.log('🧹 [keyCache] Clearing user private key');
   userPrivateKeyMemory = null;
   await deleteIDB(USER_STORE, "currentUser");
+  console.log('🗑️ User private key cleared');
 }
 
 // ---------------------------
 // Group key functions
 // ---------------------------
 export async function setGroupKey(groupId, keyUint8, persist = true) {
-  console.log(`🔐 [keyCache] Setting group key for group ${groupId}`);
-  
-  if (!(keyUint8 instanceof Uint8Array)) {
-    console.error('❌ [keyCache] Invalid key type for group key');
-    throw new Error('Group key must be Uint8Array');
-  }
+  try {
+    // Validate input
+    if (!(keyUint8 instanceof Uint8Array)) {
+      throw new Error('Invalid key type: must be Uint8Array');
+    }
 
-  groupKeyMemory.set(groupId, keyUint8);
+    console.log('💾 Setting group key:', {
+      groupId,
+      keyLength: keyUint8.length,
+      persist,
+      hasSessionKey: !!sessionKey
+    });
 
-  if (persist) {
-    if (!sessionKey) {
-      console.warn('⚠️ [keyCache] No session key, storing group key unencrypted');
-      await setIDB(GROUP_STORE, {
-        groupId,
-        rawKey: uint8ToBase64(keyUint8),
-        encrypted: false
-      });
-    } else {
+    // Always set in memory
+    groupKeyMemory.set(groupId, keyUint8);
+
+    // Persist to IndexedDB if requested and session key exists
+    if (persist && sessionKey) {
       const { iv, ciphertext } = await aesGcmEncryptRaw(sessionKey, keyUint8);
       await setIDB(GROUP_STORE, {
         groupId,
         encryptedKey: uint8ToBase64(ciphertext),
         iv: uint8ToBase64(iv),
-        encrypted: true
       });
+      console.log(`✅ Group key for ${groupId} persisted to IndexedDB`);
+    } else if (persist && !sessionKey) {
+      console.warn(`⚠️ Cannot persist group key ${groupId}: no session key available`);
     }
-    console.log(`✅ [keyCache] Group key for ${groupId} persisted`);
+
+    return true;
+  } catch (error) {
+    console.error(`❌ Error setting group key ${groupId}:`, error);
+    throw error;
   }
 }
 
 export async function getGroupKey(groupId) {
-  console.log(`🔍 [keyCache] Getting group key for group ${groupId}...`);
-  
-  // Check memory first
+  // Return from memory if available
   if (groupKeyMemory.has(groupId)) {
-    console.log(`✅ [keyCache] Found in memory for group ${groupId}`);
+    console.log(`✅ Retrieved group key ${groupId} from memory`);
     return groupKeyMemory.get(groupId);
   }
 
-  console.log(`⏳ [keyCache] Not in memory, checking IndexedDB for group ${groupId}...`);
+  // Try to load from IndexedDB if session key exists
+  if (!sessionKey) {
+    console.warn(`⚠️ Cannot retrieve group key ${groupId} from IndexedDB: no session key`);
+    return null;
+  }
 
   try {
     const record = await getIDB(GROUP_STORE, groupId);
     if (!record) {
-      console.log(`❌ [keyCache] No key found for group ${groupId}`);
+      console.warn(`⚠️ No group key found in IndexedDB for ${groupId}`);
       return null;
     }
 
-    let key;
-
-    // Handle unencrypted
-    if (record.encrypted === false && record.rawKey) {
-      key = base64ToUint8(record.rawKey);
-    }
-    // Handle encrypted
-    else if (record.encrypted !== false && record.encryptedKey && record.iv) {
-      if (!sessionKey) {
-        console.warn(`⚠️ [keyCache] No session key for group ${groupId}`);
-        return null;
-      }
-      const iv = base64ToUint8(record.iv);
-      const ciphertext = base64ToUint8(record.encryptedKey);
-      key = await aesGcmDecryptRaw(sessionKey, iv, ciphertext);
-    } else {
-      console.error(`❌ [keyCache] Invalid record format for group ${groupId}`);
-      return null;
-    }
-
-    if (key instanceof Uint8Array) {
-      groupKeyMemory.set(groupId, key);
-      console.log(`✅ [keyCache] Group key loaded for ${groupId}`);
-      return key;
-    }
+    const iv = base64ToUint8(record.iv);
+    const ciphertext = base64ToUint8(record.encryptedKey);
+    const key = await aesGcmDecryptRaw(sessionKey, iv, ciphertext);
+    
+    // Cache in memory
+    groupKeyMemory.set(groupId, key);
+    console.log(`✅ Retrieved and decrypted group key ${groupId} from IndexedDB`);
+    
+    return key;
   } catch (error) {
-    console.error(`❌ [keyCache] Error loading group key for ${groupId}:`, error);
+    console.error(`❌ Error retrieving group key ${groupId}:`, error);
+    return null;
   }
-
-  return null;
 }
 
 export async function clearGroupKey(groupId) {
-  console.log(`🧹 [keyCache] Clearing group key for ${groupId}`);
   groupKeyMemory.delete(groupId);
   await deleteIDB(GROUP_STORE, groupId);
+  console.log(`🗑️ Group key ${groupId} cleared`);
 }
 
 export async function clearAllGroupKeys() {
-  console.log('🧹 [keyCache] Clearing all group keys');
   groupKeyMemory.clear();
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(GROUP_STORE, "readwrite");
     const store = tx.objectStore(GROUP_STORE);
     const request = store.clear();
-    request.onsuccess = () => resolve(true);
+    request.onsuccess = () => {
+      console.log('🗑️ All group keys cleared');
+      resolve(true);
+    };
     request.onerror = (e) => reject(e.target.error);
   });
 }

@@ -493,8 +493,13 @@ if (hasContent) {
   }
 
   // 🔒 Proceed with encryption
-  const encrypted = await encryptMessage(message.content, groupKey);
-  encryptedContent = JSON.stringify(encrypted);
+  try {
+    const encrypted = await encryptMessage(message.content, groupKey);
+    encryptedContent = JSON.stringify(encrypted);
+  } catch (encryptErr) {
+    console.error("❌ [WEBSOCKET] Encryption failed:", encryptErr);
+    return false;
+  }
 }
 
 
@@ -724,6 +729,7 @@ if (hasContent) {
     fileTransfers,
     mediaUploads,
     sendMessage,
+    sendWebSocketMessage, // 🆕 Export raw sender for control messages
     sendFile,
     sendFileChunk,
     sendFileEnd,
@@ -735,7 +741,7 @@ if (hasContent) {
     disconnect,
     clearGroupMessages,
     clearAllMessages,
-    showNotification // Export the notification function
+    showNotification
   };
 };
 

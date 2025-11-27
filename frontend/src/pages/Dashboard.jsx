@@ -33,13 +33,13 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      
+
       setLoading(true);
       try {
         // Fetch user's groups
         const userGroups = await ApiClient.chat.getGroups();
         console.log('📥 Dashboard - Raw groups data from API:', JSON.stringify(userGroups, null, 2));
-        
+
         // Filter out groups with 2 or fewer members (only show groups with 3 or more members)
         const filteredGroups = userGroups.filter(group => {
           const memberCount = group.memberCount || group.member_count || 0;
@@ -48,10 +48,10 @@ const Dashboard = () => {
           console.log(`🔍 Dashboard Group Filter - Name: ${group.groupName || group.name || 'Unknown'}, ID: ${group.groupId || group.id}, memberCount: ${memberCount}, shouldInclude: ${shouldInclude}`);
           return shouldInclude;
         });
-        
+
         console.log('✅ Dashboard filtered groups (>2 members):', JSON.stringify(filteredGroups, null, 2));
         setGroups(filteredGroups);
-        
+
         // Fetch all users for user management
         const allUsers = await ApiClient.users.getAllUsernames();
         console.log('📥 Dashboard - Fetched users:', allUsers); // Debug log
@@ -73,7 +73,7 @@ const Dashboard = () => {
     if (searchQuery.trim() === '') {
       setFilteredUsers(users.filter(username => username !== user?.username));
     } else {
-      const filtered = users.filter(username => 
+      const filtered = users.filter(username =>
         username.toLowerCase().includes(searchQuery.toLowerCase()) && username !== user?.username
       );
       setFilteredUsers(filtered);
@@ -90,7 +90,6 @@ const Dashboard = () => {
   const tabs = [
     { id: 'groups', label: 'Groups', icon: '👥' },
     { id: 'users', label: 'Users', icon: '👤' },
-    { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
   // User card component with optimized real-time updates
@@ -100,19 +99,19 @@ const Dashboard = () => {
 
     const handleChatClick = async (e) => {
       e.stopPropagation();
-      
+
       try {
         // Search for the user by username to get their ID
         const searchResults = await ApiClient.users.search(username);
         const targetUser = searchResults.find(user => user.username === username);
-        
+
         if (!targetUser) {
           console.error('User not found:', username);
           // Fallback to regular chat navigation
           navigate('/dm');
           return;
         }
-        
+
         // Check if a DM already exists with this user
         const userGroups = await ApiClient.chat.getGroups();
         // ABANDON isDirect logic - use member count instead
@@ -120,7 +119,7 @@ const Dashboard = () => {
           const memberCount = group.memberCount || group.member_count || 0;
           return memberCount === 2;
         });
-        
+
         let existingDM = null;
         for (const group of directGroups) {
           try {
@@ -135,7 +134,7 @@ const Dashboard = () => {
             console.warn('Error checking group members:', error);
           }
         }
-        
+
         if (existingDM) {
           // Navigate to existing DM
           console.log('Navigating to existing DM:', existingDM);
@@ -154,21 +153,19 @@ const Dashboard = () => {
     };
 
     return (
-      <div 
-        className={`p-4 rounded-xl theme-surface border cursor-pointer transition-all duration-300 hover:scale-[102%] relative ${
-          isDarkMode ? 'border-gray-700 hover:border-gray-500' : 'border-gray-300 hover:border-gray-500'
-        } ${hasSentDm ? 'ring-2 ring-blue-500' : ''}`} // Add ring for users with DMs
+      <div
+        className={`p-4 rounded-xl theme-surface border cursor-pointer transition-all duration-300 hover:scale-[102%] relative ${isDarkMode ? 'border-gray-700 hover:border-gray-500' : 'border-gray-300 hover:border-gray-500'
+          } ${hasSentDm ? 'ring-2 ring-blue-500' : ''}`} // Add ring for users with DMs
       >
         {/* Message indicator for users who sent DMs */}
         {hasSentDm && (
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-gray-900 animate-pulse"></div>
         )}
-        
+
         <div className="flex items-center">
           <div className="relative">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold mr-3 ${
-              isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
-            }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold mr-3 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
+              }`}>
               {username?.charAt(0)?.toUpperCase() || 'U'}
             </div>
             {/* Green circle for online users - only show when initial status processing is complete */}
@@ -189,12 +186,12 @@ const Dashboard = () => {
               {initialStatusProcessed ? (isOnline ? 'Online' : 'Offline') : `Loading status...`}
             </p>
           </div>
-          <button 
-            className={`px-3 py-1 text-sm rounded-lg font-medium transition-colors border ${
-              isDarkMode 
-                ? 'bg-white text-black border-black hover:bg-gray-200' 
-                : 'bg-black text-white border-black hover:bg-gray-800'
-            }`}
+          <button
+            className="px-3 py-1 text-sm rounded-lg font-medium transition-all duration-300 hover:scale-105 text-white shadow-md"
+            style={{
+              background: `linear-gradient(to right, var(--accent-primary), var(--accent-secondary, var(--accent-primary)))`,
+              boxShadow: `0 4px 15px -3px var(--shadow-color)`
+            }}
             onClick={handleChatClick}
           >
             Chat
@@ -205,7 +202,17 @@ const Dashboard = () => {
   });
 
   return (
-    <div className={`min-h-screen theme-bg ${isDarkMode ? 'dark' : ''}`}>
+    <div className={`min-h-screen theme-bg ${isDarkMode ? 'dark' : ''} relative overflow-hidden transition-colors duration-500`}>
+      {/* Background Elements */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 opacity-[0.03] bg-grid-pattern"></div>
+
+        {/* Animated Gradient Blobs */}
+        <div className="absolute top-0 -left-4 w-72 h-72 bg-purple-300 dark:bg-purple-900 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 animate-blob"></div>
+        <div className="absolute top-0 -right-4 w-72 h-72 bg-yellow-300 dark:bg-yellow-900 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-300 dark:bg-pink-900 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+      </div>
       {/* Header */}
       <header className={`border-b theme-border sticky top-0 z-10 theme-surface`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -213,16 +220,15 @@ const Dashboard = () => {
             <div className="flex items-center">
               <h1 className="text-xl font-bold theme-text">Echo Chat</h1>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <ThemeToggle />
               <button
                 onClick={handleLogout}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  isDarkMode 
-                    ? 'bg-red-600 hover:bg-red-700 text-white' 
-                    : 'bg-red-500 hover:bg-red-600 text-white'
-                }`}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${isDarkMode
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+                  }`}
               >
                 Logout
               </button>
@@ -231,67 +237,94 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32 sm:pb-8">
         {/* Welcome Back Module */}
-        <div className={`rounded-2xl p-6 mb-8 theme-surface border ${
-          isDarkMode ? 'border-gray-700' : 'border-gray-300'
-        }`}>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-2xl font-bold theme-text">
-                Welcome back, <span className="theme-text">{user?.username || 'User'}!</span>
+        {/* Hero Banner */}
+        <div className="relative rounded-3xl p-8 mb-12 overflow-hidden group">
+          {/* Hero Background with Glass Effect */}
+          <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 dark:from-violet-500/20 dark:to-fuchsia-500/20 backdrop-blur-xl border theme-border border-white/20 shadow-2xl transition-all duration-500 group-hover:scale-[1.01]"></div>
+
+          {/* Decorative Circles */}
+          <div className="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-60 h-60 bg-gradient-to-tr from-blue-500/20 to-teal-500/20 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
+
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="space-y-2">
+              <h2 className="text-4xl font-extrabold theme-text tracking-tight">
+                Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-400 dark:to-fuchsia-400">{user?.username || 'User'}</span>
+                <span className="inline-block animate-bounce-in ml-2">👋</span>
               </h2>
-              <p className={`mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Here's what's happening with your chats today.
+              <p className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'} max-w-xl leading-relaxed`}>
+                Your personal workspace is ready. Connect with friends, manage your groups, and stay organized.
               </p>
             </div>
-            <div className="mt-4 md:mt-0">
-              <button 
-                className={`px-4 py-2 rounded-lg font-medium transition-colors border ${
-                  isDarkMode 
-                    ? 'bg-white text-black border-black hover:bg-gray-200' 
-                    : 'bg-black text-white border-black hover:bg-gray-800'
-                }`}
-                onClick={() => navigate('/chat', { state: { createGroup: true } })}
-              >
-                Open Chat
-              </button>
-            </div>
+
+
           </div>
         </div>
 
-        {/* Navigation Buttons with theme-aware colors */}
-        <div className="flex flex-wrap gap-2 mb-6">
+        {/* Navigation Buttons - Desktop (Centered) */}
+        <div className="hidden sm:flex justify-center flex-wrap gap-2 mb-8">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? (isDarkMode ? 'bg-black text-white' : 'bg-black text-white')
-                  : (isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300')
-              }`}
+              className={`flex items-center space-x-2 px-6 py-3 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-110 active:scale-95 ${activeTab === tab.id
+                ? 'text-white shadow-xl ring-2 ring-offset-2 ring-offset-transparent'
+                : (isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-50 hover:shadow-lg border border-gray-200')
+                }`}
+              style={activeTab === tab.id ? {
+                background: `linear-gradient(to right, var(--accent-primary), var(--accent-secondary, var(--accent-primary)))`,
+                boxShadow: `0 4px 15px -3px var(--shadow-color)`
+              } : {}}
             >
-              <span>{tab.icon}</span>
+              <span className="text-lg">{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
           ))}
         </div>
 
+        {/* Mobile Bottom Navigation */}
+        <div className={`sm:hidden fixed bottom-0 left-0 right-0 z-50 px-6 py-4 border-t theme-surface ${isDarkMode ? 'border-gray-800' : 'border-gray-200'
+          } pb-safe`}>
+          <div className="flex justify-around items-center">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === tab.id
+                  ? 'transform -translate-y-2'
+                  : 'opacity-60 hover:opacity-100'
+                  }`}
+              >
+                <div className={`p-3 rounded-full transition-all ${activeTab === tab.id
+                  ? (isDarkMode ? 'bg-white text-black shadow-lg shadow-white/20' : 'bg-black text-white shadow-lg shadow-black/20')
+                  : 'bg-transparent theme-text'
+                  }`}>
+                  <span className="text-xl">{tab.icon}</span>
+                </div>
+                <span className={`text-xs font-medium ${activeTab === tab.id ? 'theme-text font-bold' : 'theme-text-secondary'
+                  }`}>
+                  {tab.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Tab Content */}
-        <div className={`rounded-2xl p-6 theme-surface border ${
-          isDarkMode ? 'border-gray-700' : 'border-gray-300'
-        }`}>
+        <div className={`rounded-2xl p-6 theme-surface border ${isDarkMode ? 'border-gray-700' : 'border-gray-300'
+          }`}>
           {activeTab === 'groups' && (
             <div>
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold theme-text">Your Groups</h2>
-                <button 
-                  className={`flex items-center space-x-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                    isDarkMode 
-                      ? 'bg-white text-black border-black hover:bg-gray-200' 
-                      : 'bg-black text-white border-black hover:bg-gray-800'
-                  }`}
+                <button
+                  className="flex items-center space-x-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:scale-105 text-white shadow-md"
+                  style={{
+                    background: `linear-gradient(to right, var(--accent-primary), var(--accent-secondary, var(--accent-primary)))`,
+                    boxShadow: `0 4px 15px -3px var(--shadow-color)`
+                  }}
                   onClick={() => navigate('/chat', { state: { createGroup: true } })}
                 >
                   <span>+</span>
@@ -306,24 +339,23 @@ const Dashboard = () => {
                 <div className="text-center py-12">
                   <div className="text-5xl mb-4">👥</div>
                   <h3 className="text-xl font-medium theme-text mb-2">No groups yet</h3>
-                  <p className={`${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                  }`}>
+                  <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
                     Create your first group to start chatting with others
                   </p>
-                  <button 
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors border mt-4 ${
-                      isDarkMode 
-                        ? 'bg-white text-black border-black hover:bg-gray-200' 
-                        : 'bg-black text-white border-black hover:bg-gray-800'
-                    }`}
+                  <button
+                    className="px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 text-white shadow-lg mt-4"
+                    style={{
+                      background: `linear-gradient(to right, var(--accent-primary), var(--accent-secondary, var(--accent-primary)))`,
+                      boxShadow: `0 4px 15px -3px var(--shadow-color)`
+                    }}
                     onClick={() => navigate('/chat', { state: { createGroup: true } })}
                   >
                     Create Group
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
                   {groups.map((group, index) => {
                     // Use the memberCount directly since the groups array is already filtered
                     const memberCount = group.memberCount;
@@ -334,34 +366,43 @@ const Dashboard = () => {
                       isDirect: group.isDirect
                     });
                     return (
-                      <div 
+                      <div
                         key={index}
-                        className={`p-4 rounded-xl theme-surface border cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
-                          isDarkMode ? 'border-gray-700 hover:border-gray-500' : 'border-gray-300 hover:border-gray-500'
-                        }`}
+                        className={`w-full p-5 rounded-2xl theme-surface border cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl group relative overflow-hidden ${isDarkMode ? 'border-gray-700 hover:border-violet-500/50' : 'border-gray-200 hover:border-violet-400/50'
+                          }`}
                         onClick={() => navigate('/chat', { state: { groupId: group.groupId || group.id } })}
                       >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-bold theme-text">{group.groupName || group.name || 'Unnamed Group'}</h3>
-                            <p className={`text-sm mt-1 ${
-                              isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                            }`}>
-                              {memberCount} members
-                            </p>
+                        {/* Hover Gradient Overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-violet-500/5 to-fuchsia-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+                        <div className="flex justify-between items-start relative z-10">
+                          <div className="flex items-center gap-4">
+                            {/* Group Avatar Placeholder */}
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-lg transition-transform duration-300 group-hover:scale-110 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
+                              {group.groupName ? group.groupName.charAt(0).toUpperCase() : 'G'}
+                            </div>
+
+                            <div>
+                              <h3 className="font-bold theme-text text-lg group-hover:text-violet-500 transition-colors">{group.groupName || group.name || 'Unnamed Group'}</h3>
+                              <p className={`text-sm mt-1 flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                }`}>
+                                <span>👥</span> {memberCount} members
+                              </p>
+                            </div>
                           </div>
-                          <button 
-                            className={`px-3 py-1 text-sm rounded-lg font-medium transition-colors border ${
-                              isDarkMode 
-                                ? 'bg-white text-black border-black hover:bg-gray-200' 
-                                : 'bg-black text-white border-black hover:bg-gray-800'
-                            }`}
+
+                          <button
+                            className="px-4 py-2 text-sm rounded-xl font-medium transition-all duration-300 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 text-white shadow-md"
+                            style={{
+                              background: `linear-gradient(to right, var(--accent-primary), var(--accent-secondary, var(--accent-primary)))`,
+                              boxShadow: `0 4px 15px -3px var(--shadow-color)`
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               navigate('/chat', { state: { groupId: group.groupId || group.id } });
                             }}
                           >
-                            Chat
+                            Chat →
                           </button>
                         </div>
                       </div>
@@ -382,13 +423,15 @@ const Dashboard = () => {
                     placeholder="Search users..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className={`px-4 py-2 rounded-lg border pr-10 ${
-                      isDarkMode 
-                        ? 'bg-gray-800 border-gray-700 text-white' 
-                        : 'bg-white border-gray-300 text-gray-900'
-                    } focus:ring-2 focus:ring-gray-500 focus:border-gray-500`}
+                    className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg border pr-10 text-sm sm:text-base theme-surface theme-border theme-text focus:outline-none focus:ring-2"
+                    style={{
+                      '--tw-ring-color': 'var(--accent-primary)',
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
                   />
-                  <span className="absolute right-3 top-2.5">🔍</span>
+                  <span className="absolute right-3 top-1.5 sm:top-2.5 text-sm sm:text-base">🔍</span>
                 </div>
               </div>
               {loading ? (
@@ -399,9 +442,8 @@ const Dashboard = () => {
                 <div className="text-center py-12">
                   <div className="text-5xl mb-4">👤</div>
                   <h3 className="text-xl font-medium theme-text mb-2">No users found</h3>
-                  <p className={`${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                  }`}>
+                  <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
                     {searchQuery ? 'No users match your search' : 'There are no other users in the system yet'}
                   </p>
                 </div>
@@ -417,187 +459,7 @@ const Dashboard = () => {
             </div>
           )}
 
-          {activeTab === 'settings' && (
-            <div>
-              <h2 className="text-xl font-bold theme-text mb-6">Settings</h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-bold theme-text mb-4">Profile Settings</h3>
-                  <div className={`p-6 rounded-xl theme-surface border ${
-                    isDarkMode ? 'border-gray-700' : 'border-gray-300'
-                  }`}>
-                    <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
-                      <div className="relative">
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center font-bold ${
-                          isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
-                        }`}>
-                          <span className="text-xl font-bold">
-                            {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-                          </span>
-                        </div>
-                        <button className={`absolute bottom-0 right-0 rounded-full p-1 shadow ${
-                          isDarkMode ? 'bg-gray-700' : 'bg-white'
-                        }`}>
-                          <svg className={`w-4 h-4 ${
-                            isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="text-center sm:text-left">
-                        <h4 className="font-bold theme-text">{user?.username || 'User'}</h4>
-                        <p className={`text-sm mt-1 ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                          {user?.email || 'user@example.com'}
-                        </p>
-                        <button className={`mt-2 text-sm ${
-                          isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'
-                        } hover:underline`}>
-                          Edit Profile
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-6 space-y-4">
-                      <div>
-                        <label className={`block text-sm font-medium mb-1 uppercase tracking-wider ${
-                          isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                        }`}>
-                          Username
-                        </label>
-                        <input
-                          type="text"
-                          defaultValue={user?.username || ''}
-                          className={`w-full px-3 py-2 rounded-lg border ${
-                            isDarkMode 
-                              ? 'bg-gray-800 border-gray-700 text-white' 
-                              : 'bg-white border-gray-300 text-gray-900'
-                          } focus:ring-2 focus:ring-gray-500 focus:border-gray-500`}
-                        />
-                      </div>
-                      <div>
-                        <label className={`block text-sm font-medium mb-1 uppercase tracking-wider ${
-                          isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                        }`}>
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          defaultValue={user?.email || ''}
-                          className={`w-full px-3 py-2 rounded-lg border ${
-                            isDarkMode 
-                              ? 'bg-gray-800 border-gray-700 text-white' 
-                              : 'bg-white border-gray-300 text-gray-900'
-                          } focus:ring-2 focus:ring-gray-500 focus:border-gray-500`}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="font-bold theme-text mb-4">Preferences</h3>
-                  <div className={`p-6 rounded-xl theme-surface border space-y-6 ${
-                    isDarkMode ? 'border-gray-700' : 'border-gray-300'
-                  }`}>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium theme-text">Dark Mode</h4>
-                        <p className={`text-sm mt-1 ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                          Enable dark theme
-                        </p>
-                      </div>
-                      <ThemeToggle />
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium theme-text">Notifications</h4>
-                        <p className={`text-sm mt-1 ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                          Receive notifications
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" defaultChecked />
-                        <div className={`w-11 h-6 rounded-full peer ${
-                          isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
-                        } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:${
-                          isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
-                        }`}></div>
-                      </label>
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium theme-text">Email Alerts</h4>
-                        <p className={`text-sm mt-1 ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                          Send email notifications
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" />
-                        <div className={`w-11 h-6 rounded-full peer ${
-                          isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
-                        } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:${
-                          isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
-                        }`}></div>
-                      </label>
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium theme-text">Sound Effects</h4>
-                        <p className={`text-sm mt-1 ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                          Play sounds for notifications
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" defaultChecked />
-                        <div className={`w-11 h-6 rounded-full peer ${
-                          isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
-                        } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:${
-                          isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
-                        }`}></div>
-                      </label>
-                    </div>
-                  </div>
-                  
-                  <div className={`mt-6 p-6 rounded-xl border ${
-                    isDarkMode 
-                      ? 'bg-red-900 bg-opacity-20 border-red-800' 
-                      : 'bg-red-50 border-red-200'
-                  }`}>
-                    <h3 className={`font-bold mb-2 ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}>Danger Zone</h3>
-                    <p className={`text-sm mb-4 ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}>
-                      Permanently delete your account and all associated data.
-                    </p>
-                    <button className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isDarkMode 
-                        ? 'bg-red-800 text-red-100 hover:bg-red-700' 
-                        : 'bg-red-600 text-white hover:bg-red-700'
-                    }`}>
-                      Delete Account
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Removed settings tab content as it's useless */}
         </div>
       </div>
     </div>

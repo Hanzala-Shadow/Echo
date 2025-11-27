@@ -204,6 +204,12 @@ class ApiClient {
         method: 'DELETE'
       }),
 
+    // Delete group (admin only)
+    deleteGroup: (groupId) => 
+      ApiClient.request(`/group/${groupId}`, {
+        method: 'DELETE'
+      }),
+
     // Add member to group
     addMember: (groupId, adminId, userId) => 
       ApiClient.request(`/group/${groupId}/add-member?adminId=${adminId}&userId=${userId}`, {
@@ -238,6 +244,11 @@ class ApiClient {
 
       console.warn(`⚠️ User Private Key : ${userPrivateKey}`);
 
+if (!userPrivateKey) {
+    console.warn("⚠️ User private key is missing or null. Cannot decrypt messages.");
+    return messages; // Return encrypted messages instead of crashing
+}
+
 if (!(userPrivateKey instanceof Uint8Array)) {
     // If stored as Base64 or ArrayBuffer, convert:
     if (typeof userPrivateKey === "string") {
@@ -245,7 +256,8 @@ if (!(userPrivateKey instanceof Uint8Array)) {
     } else if (userPrivateKey instanceof ArrayBuffer) {
         userPrivateKey = new Uint8Array(userPrivateKey);
     } else {
-        throw new Error("User private key is not a valid Uint8Array");
+        console.error("❌ Invalid user private key format:", userPrivateKey);
+        return messages; // Return encrypted messages
     }
 }
         groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
@@ -268,12 +280,23 @@ if (!(userPrivateKey instanceof Uint8Array)) {
 
       try {
         if (msg.content && groupKey) {
-          // Parse the JSON string stored in DB: { iv, ciphertext }
-          const encrypted = JSON.parse(msg.content);
-          decryptedContent = await decryptMessage(encrypted, groupKey);
+          // Check if content looks like JSON (starts with {)
+          if (typeof msg.content === 'string' && msg.content.trim().startsWith('{')) {
+             try {
+                // Parse the JSON string stored in DB: { iv, ciphertext }
+                const encrypted = JSON.parse(msg.content);
+                if (encrypted.iv && encrypted.ciphertext) {
+                   decryptedContent = await decryptMessage(encrypted, groupKey);
+                }
+             } catch (parseError) {
+                // Not JSON or not encrypted format, keep original
+                // console.log('Message content is not valid JSON, using as plain text');
+             }
+          }
         }
       } catch (e) {
         console.error('❌ Message decryption failed for', msg.messageId, e);
+        decryptedContent = "⚠️ Error decrypting message";
       }
 
       return {

@@ -23,7 +23,7 @@ import {
 const DMContainer = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification, onlineUsers } = useAuth();
+  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification, onlineUsers, sendTypingIndicator } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [activeDM, setActiveDM] = useState(null);
   const [showDMSidebar, setShowDMSidebar] = useState(true);
@@ -78,7 +78,7 @@ const DMContainer = () => {
     if (!activeDM && !pendingDMInfo) {
       return [];
     }
-    
+
     const groupId = activeDM?.id;
 
     // Get messages from both sources for THIS DM only
@@ -87,12 +87,12 @@ const DMContainer = () => {
 
     // Combine messages and deduplicate by ID
     const messageMap = new Map();
-    
+
     // Add local messages first
     localDMMessages.forEach(msg => {
       messageMap.set(msg.id, msg);
     });
-    
+
     // Add real-time messages, overwriting local ones if they exist (real-time is more current)
     realtimeDMMessages.forEach(msg => {
       messageMap.set(msg.id, msg);
@@ -100,12 +100,12 @@ const DMContainer = () => {
 
     // Convert map back to array and sort by timestamp
     const allDMMessages = Array.from(messageMap.values());
-    
+
     // Sort by timestamp
     const sorted = allDMMessages.sort(
       (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
     );
-    
+
     return sorted;
   }, [localMessages, realTimeMessages, activeDM, pendingDMInfo]);
 
@@ -114,14 +114,14 @@ const DMContainer = () => {
     if ((!activeDM && !pendingDMInfo) || !user) return;
 
     const groupId = activeDM?.id;
-    
+
     const newMessages = webSocketMessages.filter(msg => {
       // Filter for messages in DMs that are not the current active DM
       const isDMMessage = dms.some(dm => dm.id === msg.groupId);
       const isNotActiveDM = groupId !== msg.groupId;
       const isNotFromCurrentUser = msg.senderId !== user.userId;
       const isRecent = (new Date() - new Date(msg.timestamp)) < 10000; // Within last 10 seconds for better visibility
-      
+
       return isDMMessage && isNotActiveDM && isNotFromCurrentUser && isRecent;
     });
 
@@ -130,21 +130,21 @@ const DMContainer = () => {
       // Find the DM group for this message
       const dmGroup = dms.find(dm => dm.id === msg.groupId);
       const senderName = msg.senderName || 'User';
-      
+
       // Show browser notification
       showNotification(
         `New message from ${senderName}`,
-        msg.content.length > 50 
-          ? msg.content.substring(0, 50) + '...' 
+        msg.content.length > 50
+          ? msg.content.substring(0, 50) + '...'
           : msg.content
       );
-      
+
       // Update new message indicator
       setNewMessageIndicator(prev => ({
         ...prev,
         [msg.groupId]: true
       }));
-      
+
       // Clear the indicator after 30 seconds
       setTimeout(() => {
         setNewMessageIndicator(prev => {
@@ -162,27 +162,27 @@ const DMContainer = () => {
       if (!token || !user?.userId) {
         return;
       }
-      
+
       setLoading(true);
       setError(null);
       try {
         const userGroups = await ApiClient.chat.getGroups();
-        
+
         // Filter for direct message groups (groups with exactly 2 members)
         const directGroups = userGroups.filter(group => {
           const memberCount = group.memberCount || group.member_count || 0;
           return memberCount === 2;
         });
-        
+
         // In the fetchUserDMs useEffect, update the transformedDMs to ensure consistent IDs:
         const transformedDMs = await Promise.all(directGroups.map(async (group) => {
           // Get the actual member count from the group data
           const memberCount = group.memberCount || group.member_count || 2;
-          
+
           // 🆕 Ensure consistent ID type (convert to number if it's a string)
           const groupId = group.groupId || group.group_id || group.id;
           const normalizedId = typeof groupId === 'string' ? parseInt(groupId, 10) : groupId;
-          
+
           // Get the other user in this DM
           let otherUser = null;
           try {
@@ -195,7 +195,7 @@ const DMContainer = () => {
           } catch (error) {
             console.warn('Error fetching DM partner:', error);
           }
-          
+
           return {
             id: normalizedId, // 🆕 Use normalized ID
             name: group.groupName || group.group_name || (otherUser ? `DM with ${otherUser.username}` : 'DM'),
@@ -204,9 +204,9 @@ const DMContainer = () => {
             otherUser: otherUser
           };
         }));
-        
+
         setDMs(transformedDMs);
-        
+
         // ... rest of your code
       } catch (error) {
         console.error('Error fetching DMs:', error);
@@ -225,37 +225,37 @@ const DMContainer = () => {
 
     const counts = {};
     const timestamps = {};
-    
+
     dms.forEach(dm => {
-      const unreadMessages = webSocketMessages.filter(msg => 
-        msg.groupId === dm.id && 
+      const unreadMessages = webSocketMessages.filter(msg =>
+        msg.groupId === dm.id &&
         msg.senderId !== user?.userId &&
         // Only count recent messages (within last 24 hours)
         (new Date() - new Date(msg.timestamp)) < 86400000
       );
-      
+
       counts[dm.id] = unreadMessages.length;
-      
+
       // Track last message timestamp for each DM
       const dmMessages = webSocketMessages.filter(msg => msg.groupId === dm.id);
       if (dmMessages.length > 0) {
-        const lastMessage = dmMessages.reduce((latest, msg) => 
+        const lastMessage = dmMessages.reduce((latest, msg) =>
           new Date(msg.timestamp) > new Date(latest.timestamp) ? msg : latest
         );
         timestamps[dm.id] = lastMessage.timestamp;
       }
     });
-    
+
     setUnreadCounts(counts);
     setLastMessageTimestamps(timestamps);
   }, [webSocketMessages, dms, user?.userId]);
 
   // Handle typing indicators
   useEffect(() => {
-    const typingMessages = webSocketMessages.filter(msg => 
+    const typingMessages = webSocketMessages.filter(msg =>
       msg.type === 'typing_start' || msg.type === 'typing_stop'
     );
-    
+
     const newTypingUsers = {};
     typingMessages.forEach(msg => {
       if (msg.type === 'typing_start') {
@@ -264,7 +264,7 @@ const DMContainer = () => {
         delete newTypingUsers[msg.group_id];
       }
     });
-    
+
     setTypingUsers(newTypingUsers);
   }, [webSocketMessages]);
 
@@ -282,7 +282,7 @@ const DMContainer = () => {
   // Load messages for a DM (only once per DM)
   const loadDMMessages = useCallback(async (groupId) => {
     console.log(`📥 [DM_CONTAINER] Loading messages for DM group ${groupId}`);
-    
+
     if (!groupId || !token) {
       console.log('❌ [DM_CONTAINER] Cannot load messages: missing groupId or token');
       return;
@@ -299,9 +299,9 @@ const DMContainer = () => {
       console.log(`📡 [DM_CONTAINER] Fetching message history for group ${groupId}`);
       const messageHistory = await ApiClient.chat.getGroupMessages(groupId);
       console.log(`📥 [DM_CONTAINER] Fetched message history for group ${groupId}:`, messageHistory);
-      
+
       let messagesArray = [];
-      
+
       if (Array.isArray(messageHistory)) {
         messagesArray = messageHistory;
         console.log(`📦 [DM_CONTAINER] Response is direct array, length: ${messagesArray.length}`);
@@ -317,7 +317,7 @@ const DMContainer = () => {
 
       const transformedMessages = messagesArray.map((msg, index) => {
         console.log(`🔄 [DM_CONTAINER] Processing message ${index + 1}:`, msg);
-        
+
         // Extract media information properly
         let media = null;
         if (msg.media && typeof msg.media === 'object' && msg.media !== null) {
@@ -325,9 +325,9 @@ const DMContainer = () => {
           // Handle nested media object
           const mediaObj = msg.media;
           const mediaId = mediaObj.media_id || mediaObj.id || mediaObj.mediaId;
-          
+
           console.log(`🆔 [DM_CONTAINER] Extracted media ID from message ${index + 1}:`, mediaId);
-          
+
           // Only create media object if we have a valid mediaId
           if (mediaId) {
             media = {
@@ -337,9 +337,9 @@ const DMContainer = () => {
               file_name: mediaObj.file_name || mediaObj.fileName,
               fileName: mediaObj.file_name || mediaObj.fileName,
               file_type: mediaObj.file_type || mediaObj.fileType,
-              fileType: mediaObj.file_type || mediaObj.fileType,
-              file_size: mediaObj.file_size || mediaObj.fileSize,
-              fileSize: mediaObj.file_size || msg.fileSize
+              fileType: msg.file_type || msg.fileType,
+              file_size: msg.file_size || msg.fileSize,
+              fileSize: msg.file_size || msg.fileSize
             };
             console.log(`✅ [DM_CONTAINER] Created media object for message ${index + 1}:`, media);
           } else {
@@ -380,7 +380,7 @@ const DMContainer = () => {
           // Add media if present
           media: media
         };
-        
+
         console.log(`✅ [DM_CONTAINER] Transformed message ${index + 1}:`, transformed);
         return transformed;
       });
@@ -404,11 +404,14 @@ const DMContainer = () => {
 
     } catch (error) {
       console.error(`❌ [DM_CONTAINER] Error fetching DM messages for group ${groupId}:`, error);
-      setError('Failed to load messages');
+      // Don't set error state immediately if we have some messages
+      if (localMessages.length === 0) {
+        setError(`Failed to load messages: ${error.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
     }
-  }, [token, user?.userId, loadedDMs]);
+  }, [token, user?.userId, loadedDMs, localMessages.length]);
 
   // Handle DM selection
   const handleDMSelect = async (dm) => {
@@ -426,13 +429,14 @@ const DMContainer = () => {
 
       // Set new active DM
       setActiveDM(dm);
+      localStorage.setItem('activeDMId', dm.id); // Save to localStorage
 
       // Join the DM via WebSocket
       joinGroup(dm.id);
 
       // Load message history for this DM
       await loadDMMessages(dm.id);
-      
+
       // Get the other user in this DM
       try {
         const membersData = await ApiClient.chat.getGroupMembers(dm.id);
@@ -447,10 +451,10 @@ const DMContainer = () => {
         console.error('Error fetching DM partner:', error);
         // Don't break the flow if we can't get user details
       }
-      
+
       // Clear pending DM info since we've selected an actual DM
       setPendingDMInfo(null);
-      
+
       // Clear new message indicator for this DM
       setNewMessageIndicator(prev => {
         const updated = { ...prev };
@@ -462,26 +466,43 @@ const DMContainer = () => {
       setError('Failed to open conversation. Please try again.');
       // Reset active DM on error
       setActiveDM(null);
+      localStorage.removeItem('activeDMId');
     }
   };
 
+  // Restore active DM from localStorage
+  useEffect(() => {
+    // 🆕 Don't restore from localStorage if we have navigation state
+    const hasNavigationState = location.state?.groupId || location.state?.targetUserId;
+
+    const savedDMId = localStorage.getItem('activeDMId');
+    if (savedDMId && dms.length > 0 && !activeDM && !pendingDMInfo && !hasNavigationState) {
+      // Ensure we compare strings/numbers correctly
+      const dm = dms.find(d => String(d.id) === String(savedDMId));
+      if (dm) {
+        console.log('🔄 Restoring active DM from localStorage:', dm.name);
+        handleDMSelect(dm);
+      }
+    }
+  }, [dms, activeDM, pendingDMInfo, location.state]); // handleDMSelect is stable or we can omit it if not wrapped
+
   // Add this function to refresh DMs list
   // Update the refreshDMs function to return the refreshed data
-const refreshDMs = async () => {
+  const refreshDMs = async () => {
     if (!token || !user?.userId) return [];
-    
+
     try {
       const userGroups = await ApiClient.chat.getGroups();
-      
+
       // Filter for direct message groups (groups with exactly 2 members)
       const directGroups = userGroups.filter(group => {
         const memberCount = group.memberCount || group.member_count || 0;
         return memberCount === 2;
       });
-      
+
       const transformedDMs = await Promise.all(directGroups.map(async (group) => {
         const memberCount = group.memberCount || group.member_count || 2;
-        
+
         let otherUser = null;
         try {
           const membersData = await ApiClient.chat.getGroupMembers(group.groupId || group.group_id || group.id);
@@ -493,7 +514,7 @@ const refreshDMs = async () => {
         } catch (error) {
           console.warn('Error fetching DM partner:', error);
         }
-        
+
         return {
           id: group.groupId || group.group_id || group.id,
           name: group.groupName || group.group_name || (otherUser ? `DM with ${otherUser.username}` : 'DM'),
@@ -502,7 +523,7 @@ const refreshDMs = async () => {
           otherUser: otherUser
         };
       }));
-      
+
       setDMs(transformedDMs);
       return transformedDMs; // 🆕 RETURN the refreshed DMs
     } catch (error) {
@@ -511,186 +532,182 @@ const refreshDMs = async () => {
     }
   };
 
- // =======================
-// 🧠 HANDLE SEND MESSAGE
-// =======================
-const handleSendMessage = async (messageData) => {
-  console.log('📤 [DM_CONTAINER] Sending message:', messageData);
+  // =======================
+  // 🧠 HANDLE SEND MESSAGE
+  // =======================
+  const handleSendMessage = async (messageData) => {
+    console.log('📤 [DM_CONTAINER] Sending message:', messageData);
 
-  const content = messageData.content || "";
-  const media = messageData.media || null;
-  const hasContent = content && content.trim() !== '';
-  const hasMedia = media && Object.keys(media).length > 0;
+    const content = messageData.content || "";
+    const media = messageData.media || null;
+    const hasContent = content && content.trim() !== '';
+    const hasMedia = media && Object.keys(media).length > 0;
 
-  if (!hasContent && !hasMedia) {
-    console.log('❌ [DM_CONTAINER] Cannot send empty message.');
-    return;
-  }
+    if (!hasContent && !hasMedia) {
+      console.log('❌ [DM_CONTAINER] Cannot send empty message.');
+      return;
+    }
 
-  setIsSending(true);
-  setError(null);
+    setIsSending(true);
+    setError(null);
 
-  try {
-    let targetGroupId = activeDM?.id;
+    try {
+      let targetGroupId = activeDM?.id;
 
-    // 🆕 If DM doesn’t exist, create it + generate & post keys
-    if (pendingDMInfo && !activeDM) {
-      console.log('🆕 [DM_CONTAINER] Creating new encrypted DM for user:', pendingDMInfo);
+      // 🆕 If DM doesn’t exist, create it + generate & post keys
+      if (pendingDMInfo && !activeDM) {
+        console.log('🆕 [DM_CONTAINER] Creating new encrypted DM for user:', pendingDMInfo);
 
-      try {
-        // 1️⃣ Define members
-        const memberIds = [pendingDMInfo.targetUserId, user.userId];
-        console.log('👥 [DM_CONTAINER] Member IDs for DM:', memberIds);
+        try {
+          // 1️⃣ Define members
+          const memberIds = [pendingDMInfo.targetUserId, user.userId];
+          console.log('👥 [DM_CONTAINER] Member IDs for DM:', memberIds);
 
-        // 2️⃣ Create the group via backend
-        const groupResponse = await ApiClient.chat.createGroup(
-          `DM with ${pendingDMInfo.username}`,
-          [pendingDMInfo.targetUserId]
-        );
-        console.log('✅ [DM_CONTAINER] Created DM group:', groupResponse);
+          // 2️⃣ Create the group via backend
+          const groupResponse = await ApiClient.chat.createGroup(
+            `DM with ${pendingDMInfo.username}`,
+            [pendingDMInfo.targetUserId]
+          );
+          console.log('✅ [DM_CONTAINER] Created DM group:', groupResponse);
 
-        const groupId = groupResponse.group_id || groupResponse.groupId;
-        if (!groupId) throw new Error("Invalid groupId in response");
+          const groupId = groupResponse.group_id || groupResponse.groupId;
+          if (!groupId) throw new Error("Invalid groupId in response");
 
-        // 3️⃣ Generate group key and ephemeral X25519 keypair
-        const groupKey = getRandomBytes(32);
-        const { publicKey: ephPub, secretKey: ephPriv } = await generateX25519Keypair();
-        console.log('🔑 [DM_CONTAINER] Generated group key + ephemeral keypair');
+          // 3️⃣ Generate group key and ephemeral X25519 keypair
+          const groupKey = getRandomBytes(32);
+          const { publicKey: ephPub, secretKey: ephPriv } = await generateX25519Keypair();
+          console.log('🔑 [DM_CONTAINER] Generated group key + ephemeral keypair');
 
-        // 4️⃣ Upload group public key
-        await ApiClient.keys.uploadGroupPublicKey({
-          groupId,
-          groupPublicKey: uint8ToBase64(ephPub)
-        });
-        console.log('✅ [DM_CONTAINER] Uploaded group public key');
+          // 4️⃣ Upload group public key
+          await ApiClient.keys.uploadGroupPublicKey({
+            groupId,
+            groupPublicKey: uint8ToBase64(ephPub)
+          });
+          console.log('✅ [DM_CONTAINER] Uploaded group public key');
 
-        // 5️⃣ For each member, fetch their public key and upload wrapped group key
-        for (const userId of memberIds) {
-          try {
-            console.log(`🔄 [DM_CONTAINER] Fetching public key for user ${userId}`);
-            const userKeyResp = await ApiClient.keys.getUserKeys(userId);
-            const pubBase64 = userKeyResp.publicKey || userKeyResp.public_key || userKeyResp.publicKeyBase64;
-            const memberPub = base64ToUint8(pubBase64);
+          // 5️⃣ For each member, fetch their public key and upload wrapped group key
+          for (const userId of memberIds) {
+            try {
+              console.log(`🔄 [DM_CONTAINER] Fetching public key for user ${userId}`);
+              const userKeyResp = await ApiClient.keys.getUserKeys(userId);
+              const pubBase64 = userKeyResp.publicKey || userKeyResp.public_key || userKeyResp.publicKeyBase64;
+              const memberPub = base64ToUint8(pubBase64);
 
-            // Derive shared secret
-            const shared = deriveX25519SharedSecret(ephPriv, memberPub);
-            const aesWrapKey = await hkdfSha256(shared, "chatapp:wrap:groupkey", 32);
+              // Derive shared secret
+              const shared = deriveX25519SharedSecret(ephPriv, memberPub);
+              const aesWrapKey = await hkdfSha256(shared, "chatapp:wrap:groupkey", 32);
 
-            // Encrypt the group key for this user
-            const { iv, ciphertext } = await aesGcmEncryptRaw(aesWrapKey, groupKey);
-            const wrapped = `${uint8ToBase64(iv)}:${uint8ToBase64(ciphertext)}`;
+              // Encrypt the group key for this user
+              const { iv, ciphertext } = await aesGcmEncryptRaw(aesWrapKey, groupKey);
+              const wrapped = `${uint8ToBase64(iv)}:${uint8ToBase64(ciphertext)}`;
 
-            await ApiClient.keys.uploadGroupMemberKey({
-              groupId,
-              userId,
-              encryptedGroupPrivateKey: wrapped,
-              nonce: uint8ToBase64(iv)
-            });
+              await ApiClient.keys.uploadGroupMemberKey({
+                groupId,
+                userId,
+                encryptedGroupPrivateKey: wrapped,
+                nonce: uint8ToBase64(iv)
+              });
 
-            console.log(`✅ [DM_CONTAINER] Uploaded wrapped group key for user ${userId}`);
-          } catch (err) {
-            console.error(`❌ [DM_CONTAINER] Failed to wrap/upload key for user ${userId}:`, err);
+              console.log(`✅ [DM_CONTAINER] Uploaded wrapped group key for user ${userId}`);
+            } catch (err) {
+              console.error(`❌ [DM_CONTAINER] Failed to wrap/upload key for user ${userId}:`, err);
+            }
           }
+
+          console.log('🎉 [DM_CONTAINER] DM group + key setup complete');
+
+          // 6️⃣ Create new DM object
+          const newDM = {
+            id: groupId,
+            name: `DM with ${pendingDMInfo.username}`,
+            isDirect: true,
+            memberCount: 2,
+            otherUser: {
+              userId: pendingDMInfo.targetUserId,
+              username: pendingDMInfo.username
+            }
+          };
+
+          const userDetails = await ApiClient.users.getProfile(pendingDMInfo.targetUserId);
+          setActiveDM(newDM);
+          setTargetUser(userDetails);
+          setPendingDMInfo(null);
+
+          setDMs(prev => {
+            const exists = prev.some(dm => dm.id === groupId);
+            return exists ? prev : [...prev, newDM];
+          });
+
+          targetGroupId = groupId;
+          joinGroup(groupId);
+          console.log('✅ [DM_CONTAINER] Joined new DM group:', groupId);
+
+        } catch (err) {
+          console.error('❌ [DM_CONTAINER] Error creating DM group with keys:', err);
+          setError('Failed to create encrypted DM.');
+          setIsSending(false);
+          return;
         }
+      }
 
-        console.log('🎉 [DM_CONTAINER] DM group + key setup complete');
+      // 📨 Sending message once DM exists
+      if (targetGroupId) {
+        console.log('📤 [DM_CONTAINER] Sending message to group:', targetGroupId);
 
-        // 6️⃣ Create new DM object
-        const newDM = {
-          id: groupId,
-          name: `DM with ${pendingDMInfo.username}`,
-          isDirect: true,
-          memberCount: 2,
-          otherUser: {
-            userId: pendingDMInfo.targetUserId,
-            username: pendingDMInfo.username
-          }
+        const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const optimisticMessage = {
+          id: tempId,
+          content: hasContent ? content.trim() : '',
+          senderId: user.userId,
+          senderName: user.username || "You",
+          timestamp: new Date(),
+          type: 'text',
+          groupId: targetGroupId,
+          status: 'pending',
+          isCurrentUser: true,
+          media: hasMedia ? media : null
         };
 
-        const userDetails = await ApiClient.users.getProfile(pendingDMInfo.targetUserId);
-        setActiveDM(newDM);
-        setTargetUser(userDetails);
-        setPendingDMInfo(null);
+        setLocalMessages(prev => [...prev, optimisticMessage]);
 
-        setDMs(prev => {
-          const exists = prev.some(dm => dm.id === groupId);
-          return exists ? prev : [...prev, newDM];
+        const success = sendMessage({
+          groupId: targetGroupId,
+          content: hasContent ? content.trim() : "",
+          media: hasMedia ? media : null
         });
 
-        targetGroupId = groupId;
-        joinGroup(groupId);
-        console.log('✅ [DM_CONTAINER] Joined new DM group:', groupId);
-
-      } catch (err) {
-        console.error('❌ [DM_CONTAINER] Error creating DM group with keys:', err);
-        setError('Failed to create encrypted DM.');
-        setIsSending(false);
-        return;
+        if (!success) {
+          console.log('❌ [DM_CONTAINER] WebSocket send failed');
+          setError('Failed to send message.');
+          setLocalMessages(prev =>
+            prev.map(msg => (msg.id === tempId ? { ...msg, status: 'failed' } : msg))
+          );
+        } else {
+          console.log('✅ [DM_CONTAINER] Message queued for send:', targetGroupId);
+          sendWebSocketMessage({
+            type: 'typing_stop',
+            group_id: targetGroupId,
+            user_id: user?.userId
+          });
+        }
       }
+
+    } catch (error) {
+      console.error('❌ [DM_CONTAINER] Error sending message:', error);
+      setError('Failed to send message: ' + error.message);
+    } finally {
+      setIsSending(false);
     }
-
-    // 📨 Sending message once DM exists
-    if (targetGroupId) {
-      console.log('📤 [DM_CONTAINER] Sending message to group:', targetGroupId);
-
-      const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const optimisticMessage = {
-        id: tempId,
-        content: hasContent ? content.trim() : '',
-        senderId: user.userId,
-        senderName: user.username || "You",
-        timestamp: new Date(),
-        type: 'text',
-        groupId: targetGroupId,
-        status: 'pending',
-        isCurrentUser: true,
-        media: hasMedia ? media : null
-      };
-
-      setLocalMessages(prev => [...prev, optimisticMessage]);
-
-      const success = sendMessage({
-        groupId: targetGroupId,
-        content: hasContent ? content.trim() : "",
-        media: hasMedia ? media : null
-      });
-
-      if (!success) {
-        console.log('❌ [DM_CONTAINER] WebSocket send failed');
-        setError('Failed to send message.');
-        setLocalMessages(prev =>
-          prev.map(msg => (msg.id === tempId ? { ...msg, status: 'failed' } : msg))
-        );
-      } else {
-        console.log('✅ [DM_CONTAINER] Message queued for send:', targetGroupId);
-        sendWebSocketMessage({
-          type: 'typing_stop',
-          group_id: targetGroupId,
-          user_id: user?.userId
-        });
-      }
-    }
-
-  } catch (error) {
-    console.error('❌ [DM_CONTAINER] Error sending message:', error);
-    setError('Failed to send message: ' + error.message);
-  } finally {
-    setIsSending(false);
-  }
-};
+  };
 
   // Handle typing indicator with debouncing
   const handleTyping = useCallback((isTyping) => {
     // Only send typing indicators if we have an active DM
     if (!activeDM) return;
-    
+
     // Send typing indicator via WebSocket
-    sendWebSocketMessage({
-      type: isTyping ? 'typing_start' : 'typing_stop',
-      group_id: activeDM.id,
-      user_id: user?.userId
-    });
-  }, [activeDM, sendWebSocketMessage, user?.userId]);
+    sendTypingIndicator(activeDM.id, isTyping);
+  }, [activeDM, sendTypingIndicator]);
 
   // Cleanup when component unmounts
   useEffect(() => {
@@ -707,17 +724,17 @@ const handleSendMessage = async (messageData) => {
 
     // Find optimistic messages that have been confirmed by server
     const confirmedOptimisticIds = new Set();
-    
+
     realTimeMessages.forEach(wsMsg => {
       // Match by content, group, and timestamp (within 3 seconds)
       localMessages.forEach(localMsg => {
         // 🆕 SAFELY CHECK IF ID IS A STRING BEFORE CALLING startsWith
         const isOptimistic = typeof localMsg.id === 'string' && localMsg.id.startsWith('optimistic-');
-        
-        if (isOptimistic && 
-            localMsg.content === wsMsg.content && 
-            localMsg.groupId === wsMsg.groupId &&
-            Math.abs(new Date(localMsg.timestamp) - new Date(wsMsg.timestamp)) < 3000) {
+
+        if (isOptimistic &&
+          localMsg.content === wsMsg.content &&
+          localMsg.groupId === wsMsg.groupId &&
+          Math.abs(new Date(localMsg.timestamp) - new Date(wsMsg.timestamp)) < 3000) {
           confirmedOptimisticIds.add(localMsg.id);
         }
       });
@@ -725,7 +742,7 @@ const handleSendMessage = async (messageData) => {
 
     if (confirmedOptimisticIds.size > 0) {
       console.log('🔄 Removing confirmed optimistic messages:', Array.from(confirmedOptimisticIds));
-      setLocalMessages(prev => 
+      setLocalMessages(prev =>
         prev.filter(msg => !confirmedOptimisticIds.has(msg.id))
       );
     }
@@ -741,14 +758,14 @@ const handleSendMessage = async (messageData) => {
       setActiveDM(null);
       setPendingDMInfo(null);
       setTargetUser(null);
-      
+
       // Handle case where we have a groupId (existing DM)
       if (location.state?.groupId && !activeDM) {
         console.log('🎯 Handling navigation with existing groupId:', location.state.groupId);
-        
+
         // First check in current DMs
         let existingDM = dms.find(dm => dm.id == location.state.groupId); // 🆕 Use == for loose comparison
-        
+
         if (existingDM) {
           console.log('✅ Found existing DM in current list, selecting it:', existingDM);
           await handleDMSelect(existingDM);
@@ -760,14 +777,14 @@ const handleSendMessage = async (messageData) => {
           }
         } else {
           console.log('❌ Group ID not found in current DMs list, refreshing DMs...');
-          
+
           // 🆕 Get the refreshed DMs and use them directly
           const refreshedDMs = await refreshDMs();
           console.log('🔄 Refreshed DMs:', refreshedDMs);
-          
+
           // Try again with refreshed list
           existingDM = refreshedDMs.find(dm => dm.id == location.state.groupId); // 🆕 Use == for loose comparison
-          
+
           if (existingDM) {
             console.log('✅ Found existing DM after refresh, selecting it:', existingDM);
             await handleDMSelect(existingDM);
@@ -777,25 +794,25 @@ const handleSendMessage = async (messageData) => {
             setError('Conversation not found. Please try again.');
           }
         }
-        
+
         // Clear the navigation state
         window.history.replaceState({}, document.title, location.pathname);
       }
       // Handle case where we have targetUserId (new DM)
       else if (location.state?.targetUserId && !activeDM) {
         console.log('🎯 Handling navigation with new DM target:', location.state);
-        
+
         const { targetUserId, username } = location.state;
-        
+
         // Refresh DMs first to ensure we have the latest list
         const refreshedDMs = await refreshDMs();
-        
+
         // Check if DM already exists with this user
         const existingDM = refreshedDMs.find(dm => {
           const otherUserId = dm.otherUser?.userId;
           return otherUserId == targetUserId; // 🆕 Use == for loose comparison
         });
-        
+
         if (existingDM) {
           console.log('✅ Existing DM found, selecting it:', existingDM);
           await handleDMSelect(existingDM);
@@ -807,11 +824,15 @@ const handleSendMessage = async (messageData) => {
           }
         } else {
           console.log('🆕 No existing DM found, setting pending info for new DM creation');
+
+          // 🆕 Clear localStorage to prevent restoration from interfering
+          localStorage.removeItem('activeDMId');
+
           setPendingDMInfo({
             targetUserId: targetUserId,
             username: username
           });
-          
+
           // Set target user for display
           try {
             const userDetails = await ApiClient.users.getProfile(targetUserId);
@@ -830,7 +851,7 @@ const handleSendMessage = async (messageData) => {
             setShowUserSidebar(false);
           }
         }
-        
+
         // Clear the navigation state
         window.history.replaceState({}, document.title, location.pathname);
       }
@@ -851,7 +872,7 @@ const handleSendMessage = async (messageData) => {
     // Simple timeout to ensure DOM is updated
     const timer = setTimeout(() => {
       if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
+        messagesEndRef.current.scrollIntoView({
           behavior: 'auto',
           block: 'end'
         });
@@ -875,9 +896,9 @@ const handleSendMessage = async (messageData) => {
   return (
     <div className="flex h-screen theme-bg flex-col sm:flex-row">
       {/* DM Sidebar - Hidden by default on mobile */}
-      <div 
+      <div
         className={`transition-all duration-300 ${showDMSidebar ? 'w-full sm:w-80 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-r theme-border sm:block`}
-        style={{ 
+        style={{
           height: showDMSidebar ? '100vh' : '0',
           zIndex: showDMSidebar ? 30 : -1
         }}
@@ -900,9 +921,9 @@ const handleSendMessage = async (messageData) => {
         )}
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
+      <div className="flex-1 flex flex-col min-w-0 theme-bg">
         {/* 🆕 FIX: Make mobile header sticky too */}
-        <div className="sticky top-0 z-20 sm:static" style={{ backgroundColor: colors.surface }}>
+        <div className="sticky top-0 z-20 sm:static theme-surface">
           {/* Mobile header with toggle buttons - UPDATED VERSION */}
           <div className="flex items-center gap-2 p-2 border-b theme-border sm:hidden">
             {activeDM ? (
@@ -910,6 +931,7 @@ const handleSendMessage = async (messageData) => {
               <button
                 onClick={() => {
                   setActiveDM(null); // Clear active DM
+                  localStorage.removeItem('activeDMId'); // Clear from localStorage
                   setTargetUser(null); // Clear target user  
                   setShowDMSidebar(true);
                   setShowUserSidebar(false);
@@ -918,8 +940,7 @@ const handleSendMessage = async (messageData) => {
                   setLoadedDMs(new Set());
                   setPendingDMInfo(null);
                 }}
-                className="p-2 rounded-lg theme-text hover-scale"
-                style={{ backgroundColor: colors.surface }}
+                className="p-2 rounded-lg theme-text hover-scale theme-surface"
               >
                 ← DMs
               </button>
@@ -931,8 +952,7 @@ const handleSendMessage = async (messageData) => {
                     setShowDMSidebar(!showDMSidebar);
                     setShowUserSidebar(false);
                   }}
-                  className="p-2 rounded-lg theme-text hover-scale"
-                  style={{ backgroundColor: colors.surface }}
+                  className="p-2 rounded-lg theme-text hover-scale theme-surface"
                 >
                   ☰
                 </button>
@@ -941,20 +961,19 @@ const handleSendMessage = async (messageData) => {
                     setShowUserSidebar(!showUserSidebar);
                     setShowDMSidebar(false);
                   }}
-                  className="p-2 rounded-lg theme-text hover-scale"
-                  style={{ backgroundColor: colors.surface }}
+                  className="p-2 rounded-lg theme-text hover-scale theme-surface"
                 >
                   👥
                 </button>
               </>
             )}
-            
+
             <div className="flex-1 text-center">
               <h3 className="font-medium theme-text truncate">
                 {activeDM ? activeDM.name.replace('DM with ', '') : 'Direct Messages'}
               </h3>
             </div>
-            
+
             {/* Add user sidebar toggle when DM is active */}
             {activeDM && (
               <button
@@ -962,8 +981,7 @@ const handleSendMessage = async (messageData) => {
                   setShowUserSidebar(!showUserSidebar);
                   setShowDMSidebar(false);
                 }}
-                className="p-2 rounded-lg theme-text hover-scale"
-                style={{ backgroundColor: colors.surface }}
+                className="p-2 rounded-lg theme-text hover-scale theme-surface"
               >
                 👥
               </button>
@@ -971,9 +989,9 @@ const handleSendMessage = async (messageData) => {
           </div>
         </div>
 
-        {/* 🆕 FIX: Make ChatHeader sticky on mobile */}
-        <div className="sticky top-[48px] z-10 sm:static" style={{ backgroundColor: colors.surface }}>
-          <ChatHeader 
+        {/* ChatHeader - Hidden on mobile, shown on desktop */}
+        <div className="hidden sm:block sticky top-[48px] z-10 sm:static theme-surface">
+          <ChatHeader
             group={activeDM}
             targetUser={targetUser}
             isConnected={isConnected}
@@ -984,11 +1002,11 @@ const handleSendMessage = async (messageData) => {
             enableAI={false}
           />
         </div>
-        
+
         {/* 🆕 FIX: Make MessageList scrollable with proper spacing */}
-        <div className="flex-1 overflow-y-auto">
-          <MessageList 
-            messages={allMessages} 
+        <div className="flex-1 overflow-y-auto theme-bg">
+          <MessageList
+            messages={allMessages}
             currentUserId={user?.userId}
             isDarkMode={isDarkMode}
             colors={colors}
@@ -997,14 +1015,14 @@ const handleSendMessage = async (messageData) => {
           />
           {/* Add this empty div for scrolling reference */}
           <div ref={messagesEndRef} />
-          
+
           {error && (
             <div className="p-2 bg-red-100 border border-red-400 text-red-700 rounded mx-4 my-2">
               {error}
             </div>
           )}
         </div>
-        
+
         {/* 🆕 FIX: Make MessageInput sticky at bottom on mobile */}
         <div className="sticky bottom-0 z-10 bg-inherit sm:static">
           <MessageInput
@@ -1012,9 +1030,9 @@ const handleSendMessage = async (messageData) => {
             disabled={(!activeDM && !pendingDMInfo) || isSending || !isConnected}
             placeholder={
               !activeDM && !pendingDMInfo
-                ? "Select a conversation to start chatting" 
-                : !isConnected 
-                  ? "Connecting..." 
+                ? "Select a conversation to start chatting"
+                : !isConnected
+                  ? "Connecting..."
                   : isSending
                     ? "Sending..."
                     : "Type a message..."
@@ -1029,15 +1047,15 @@ const handleSendMessage = async (messageData) => {
       </div>
 
       {/* User Sidebar - Hidden by default on mobile and now shows nothing */}
-      <div 
+      <div
         className={`transition-all duration-300 ${showUserSidebar ? 'w-full sm:w-64 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-l theme-border sm:block`}
-        style={{ 
+        style={{
           height: showUserSidebar ? '100vh' : '0',
           zIndex: showUserSidebar ? 30 : -1
         }}
       >
         {showUserSidebar && activeDM && targetUser && (
-          <div className="p-4">
+          <div className="p-4 theme-surface">
             <div className="flex items-center gap-3 mb-4">
               <div className="relative">
                 <div className="h-10 w-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-lg text-white">

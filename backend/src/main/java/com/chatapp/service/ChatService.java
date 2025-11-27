@@ -191,6 +191,19 @@ public class ChatService {
 
     }
 
+    // Delete Group (admin only)
+    @Transactional
+    public void deleteGroup(Long groupId) {
+        // Delete all messages in the group
+        messageRepository.deleteByGroupId(groupId);
+        
+        // Delete all group members
+        groupMemberRepository.deleteByGroupId(groupId);
+        
+        // Delete the group itself
+        groupRepository.deleteById(groupId);
+    }
+
     // -----------------------------
     // Helpers
     // -----------------------------

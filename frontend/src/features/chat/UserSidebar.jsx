@@ -2,17 +2,22 @@ import React, { useState, useEffect } from 'react';
 import ApiClient from '../../services/api';             // UPDATED
 import Skeleton from '../../components/ui/Skeleton';    // UPDATED
 
-const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => { // ADD onClose prop
-  const [userDetails, setUserDetails] = useState({}); // Cache for user details
-  const [loadingDetails, setLoadingDetails] = useState(false); // Start as false since we might not need to load
+import ThemeSelector from '../../components/ThemeSelector'; // ADD IMPORT
+
+const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
+  const [userDetails, setUserDetails] = useState({});
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showSettings, setShowSettings] = useState(false); // ADD STATE
+
+  // ... (keep existing useEffects and helper functions) ...
 
   // Fetch user details for users we don't have info for
   useEffect(() => {
     const fetchUserDetails = async () => {
-      const usersToFetch = users.filter(user => 
+      const usersToFetch = users.filter(user =>
         !userDetails[user.userId] && typeof user.userId === 'number'
       );
-      
+
       if (usersToFetch.length === 0) {
         setLoadingDetails(false);
         return;
@@ -20,10 +25,10 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
 
       console.log('🔍 Fetching details for users:', usersToFetch.map(u => u.userId));
       setLoadingDetails(true);
-      
+
       try {
         const newDetails = { ...userDetails };
-        
+
         // Fetch details for each user
         for (const user of usersToFetch) {
           try {
@@ -45,7 +50,7 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
             };
           }
         }
-        
+
         setUserDetails(newDetails);
       } catch (error) {
         console.error('❌ Error fetching user details:', error);
@@ -95,7 +100,7 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
   // ✅ FIXED: Transform users with proper fallbacks and cached details
   const transformedUsers = users.map(user => {
     const details = userDetails[user.userId] || {};
-    
+
     // Ensure we have a proper status
     let status = 'offline';
     if (user.status) {
@@ -105,7 +110,7 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
     } else if (user.online !== undefined) {
       status = user.online ? 'online' : 'offline';
     }
-    
+
     return {
       userId: user.userId || user.user_id,
       name: user.name || details.name || `User ${user.userId || user.user_id}`,
@@ -117,10 +122,10 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
     };
   });
 
-  console.log('👥 UserSidebar:', { 
-    loadingDetails, 
-    totalUsers: users.length, 
-    transformedUsers: transformedUsers.length 
+  console.log('👥 UserSidebar:', {
+    loadingDetails,
+    totalUsers: users.length,
+    transformedUsers: transformedUsers.length
   });
 
   // Sort users: online first, then by name
@@ -128,7 +133,7 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
     // Online users first
     if (a.status === 'online' && b.status !== 'online') return -1;
     if (b.status === 'online' && a.status !== 'online') return 1;
-    
+
     // Then alphabetically by name
     return (a.name || '').localeCompare(b.name || '');
   });
@@ -172,57 +177,92 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
   };
 
   return (
-    <div 
+    <div
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
-      {/* UPDATED HEADER WITH CLOSE BUTTON */}
+      {/* UPDATED HEADER WITH CLOSE BUTTON AND SETTINGS TOGGLE */}
       <div className="p-4 border-b-2 theme-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">👥</span>
-            <h3 className="font-semibold theme-text">Members</h3>
-            <span 
-              className="ml-2 px-2 py-1 rounded-full text-xs"
-              style={{ 
-                backgroundColor: colors.background,
-                color: colors.textSecondary,
-                border: `1px solid ${colors.border}`
-              }}
-            >
-              {transformedUsers.length}
+            {showSettings ? (
+              <button
+                onClick={() => setShowSettings(false)}
+                className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                ←
+              </button>
+            ) : (
+              <span className="text-lg">👥</span>
+            )}
+            <h3 className="font-semibold theme-text">
+              {showSettings ? 'Settings' : 'Members'}
+            </h3>
+            {!showSettings && (
+              <span
+                className="ml-2 px-2 py-1 rounded-full text-xs"
+                style={{
+                  backgroundColor: colors.background,
+                  color: colors.textSecondary,
+                  border: `1px solid ${colors.border}`
+                }}
+              >
+                {transformedUsers.length}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Settings Toggle */}
+            {!showSettings && (
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 rounded-lg hover-scale theme-text"
+                style={{
+                  backgroundColor: colors.background,
+                  border: `1px solid ${colors.border}`
+                }}
+                title="Theme Settings"
+              >
+                🎨
+              </button>
+            )}
+
+            {/* CLOSE BUTTON FOR MOBILE */}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-2 rounded-lg hover-scale theme-text sm:hidden"
+                style={{
+                  backgroundColor: colors.background,
+                  border: `1px solid ${colors.border}`
+                }}
+                title="Close sidebar"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Connection Status - Only show in Members view */}
+        {!showSettings && (
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <div className={`w-2 h-2 rounded-full ${onlineUsers.length > 0 ? 'bg-green-500' : 'bg-gray-400'
+              }`}></div>
+            <span className="theme-text-secondary">
+              {onlineUsers.length} online, {offlineUsers.length} offline
             </span>
           </div>
-          
-          {/* CLOSE BUTTON FOR MOBILE */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover-scale theme-text sm:hidden"
-              style={{ 
-                backgroundColor: colors.background,
-                border: `1px solid ${colors.border}`
-              }}
-              title="Close sidebar"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        
-        {/* Connection Status */}
-        <div className="mt-2 flex items-center gap-2 text-xs">
-          <div className={`w-2 h-2 rounded-full ${
-            onlineUsers.length > 0 ? 'bg-green-500' : 'bg-gray-400'
-          }`}></div>
-          <span className="theme-text-secondary">
-            {onlineUsers.length} online, {offlineUsers.length} offline
-          </span>
-        </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {loadingDetails ? (
+        {showSettings ? (
+          <div className="p-4">
+            <ThemeSelector />
+          </div>
+        ) : loadingDetails ? (
           renderUserSkeletons()
         ) : (
           <div className="p-2 space-y-4">
@@ -233,7 +273,7 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
                 </h4>
                 <div className="space-y-1">
                   {onlineUsers.map((user) => (
-                    <UserItem 
+                    <UserItem
                       key={user.userId}
                       user={user}
                       currentUserId={currentUserId}
@@ -255,7 +295,7 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
                 </h4>
                 <div className="space-y-1">
                   {offlineUsers.map((user) => (
-                    <UserItem 
+                    <UserItem
                       key={user.userId}
                       user={user}
                       currentUserId={currentUserId}
@@ -287,15 +327,15 @@ const UserSidebar = ({ users, currentUserId, isDarkMode, colors, onClose }) => {
 };
 
 // ✅ EXTRACTED: User item component for better organization
-const UserItem = ({ 
-  user, 
-  currentUserId, 
-  isDarkMode, 
-  colors, 
-  getInitials, 
-  getRoleIcon, 
+const UserItem = ({
+  user,
+  currentUserId,
+  isDarkMode,
+  colors,
+  getInitials,
+  getRoleIcon,
   getStatusColor,
-  isOffline = false 
+  isOffline = false
 }) => {
   const [showProfile, setShowProfile] = useState(false);
 
@@ -304,24 +344,23 @@ const UserItem = ({
 
   return (
     <div
-      className={`flex items-center gap-3 p-2 rounded-md hover:scale-[1.02] cursor-pointer transition-all ${
-        user.userId === currentUserId ? 'theme-surface' : ''
-      } ${isOffline ? 'opacity-60' : ''}`}
+      className={`flex items-center gap-3 p-2 rounded-md hover:scale-[1.02] cursor-pointer transition-all ${user.userId === currentUserId ? 'theme-surface' : ''
+        } ${isOffline ? 'opacity-60' : ''}`}
       style={{
-        backgroundColor: user.userId === currentUserId 
+        backgroundColor: user.userId === currentUserId
           ? (isDarkMode ? '#374151' : '#e5e7eb')
           : 'transparent',
-        border: user.userId === currentUserId 
-          ? `1px solid ${colors.border}` 
+        border: user.userId === currentUserId
+          ? `1px solid ${colors.border}`
           : '1px solid transparent'
       }}
       onClick={() => setShowProfile(true)}
       title={`Click to view ${user.name}'s profile`}
     >
       <div className="relative">
-        <div 
+        <div
           className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
-          style={{ 
+          style={{
             backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
             color: isDarkMode ? '#ffffff' : '#000000'
           }}
@@ -329,11 +368,10 @@ const UserItem = ({
           {getInitials(user.name)}
         </div>
         {/* Online status indicator - always show for online users, show muted for offline */}
-        <div 
-          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full ${
-            isUserOnline ? 'animate-pulse' : ''
-          }`}
-          style={{ 
+        <div
+          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full ${isUserOnline ? 'animate-pulse' : ''
+            }`}
+          style={{
             backgroundColor: getStatusColor(user.status),
             borderColor: 'white',
             boxShadow: '0 0 0 1px white'

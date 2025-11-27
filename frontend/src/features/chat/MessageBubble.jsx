@@ -493,11 +493,7 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
     return (
       <div className="flex justify-center my-2">
         <div
-          className="px-3 py-1 rounded-full text-xs italic"
-          style={{
-            backgroundColor: isDarkMode ? '#374151' : '#f3f4f6',
-            color: colors.textSecondary
-          }}
+          className="px-3 py-1 rounded-full text-xs italic theme-surface theme-text-secondary"
         >
           {message.content}
         </div>
@@ -527,18 +523,13 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
             </div>
           )}
           <div
-            className={`px-3 py-2 rounded-lg break-words rounded-tr-none`}
-            style={{
-              backgroundColor: isDarkMode ? '#374151' : '#f3f4f6',
-              color: colors.text,
-              border: `1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'}`
-            }}
+            className="px-3 py-2 rounded-lg break-words rounded-tr-none theme-surface"
           >
             <div className="flex items-center gap-2">
               <div className="text-xl">⚠️</div>
               <div className="text-sm italic">Media message not loaded</div>
             </div>
-            <div className={`flex items-center justify-end gap-1 mt-1 text-xs theme-text-secondary`}>
+            <div className="flex items-center justify-end gap-1 mt-1 text-xs theme-text-secondary">
               <span title={formatFullTimestamp(message.timestamp)}>
                 {formatTimestamp(message.timestamp)}
               </span>
@@ -559,18 +550,9 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
         )}
         <div
           className={`px-3 py-2 rounded-lg break-words ${isCurrentUser
-              ? 'rounded-tr-none'
-              : 'rounded-tl-none'
+              ? 'rounded-tr-none theme-surface'
+              : 'rounded-tl-none theme-surface'
             } ${hasMedia ? 'pb-1' : ''}`}
-          style={{
-            backgroundColor: isCurrentUser
-              ? (isDarkMode ? '#ffffff' : '#000000')
-              : (isDarkMode ? '#374151' : '#f3f4f6'),
-            color: isCurrentUser
-              ? (isDarkMode ? '#000000' : '#ffffff')
-              : colors.text,
-            border: `1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'}`
-          }}
         >
           {hasContent && (
             <div className="whitespace-pre-wrap">
@@ -590,10 +572,7 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
 
           {hasMedia && renderMedia(message.media)}
 
-          <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isCurrentUser
-              ? (isDarkMode ? 'text-gray-700' : 'text-gray-300')
-              : 'theme-text-secondary'
-            }`}>
+          <div className={`flex items-center justify-end gap-1 mt-1 text-xs theme-text-secondary`}>
 
             {/* ✅ NEW: Translate Button (Only if AI on & not me) */}
             {enableAI && !isCurrentUser && hasContent && (

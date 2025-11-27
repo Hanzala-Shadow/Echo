@@ -13,36 +13,53 @@
   -webkit-text-size-adjust: 100%;
 }
 
-/* Light mode (default) */
+/* Light mode (Beige Theme) */
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: rgba(255, 255, 255, 0.9);
-  --bg-tertiary: rgba(255, 255, 255, 0.5);
-  --text-primary: #000000;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --border-primary: #000000;
-  --border-secondary: #9ca3af;
-  --accent-primary: #000000;
-  --accent-hover: #374151;
-  --glass-bg: rgba(255, 255, 255, 0.1);
-  --glass-border: rgba(0, 0, 0, 0.2);
+  --bg-primary: #fdfbf7;
+  /* beige-50 */
+  --bg-secondary: #f7f3e8;
+  /* beige-100 */
+  --bg-tertiary: #efe5d0;
+  /* beige-200 */
+  --text-primary: #5e4a30;
+  /* beige-900 */
+  --text-secondary: #8c7142;
+  /* beige-700 */
+  --text-muted: #a88b55;
+  /* beige-600 */
+  --border-primary: #d6c094;
+  /* beige-400 */
+  --border-secondary: #e5d5b5;
+  /* beige-300 */
+  --accent-primary: #c4a772;
+  /* beige-500 */
+  --accent-hover: #a88b55;
+  /* beige-600 */
+  --glass-bg: rgba(253, 251, 247, 0.7);
+  --glass-border: rgba(214, 192, 148, 0.3);
+  --shadow-color: rgba(94, 74, 48, 0.1);
 }
 
-/* Dark mode */
+/* Dark mode (Neon Theme) */
 .dark {
-  --bg-primary: #000000;
-  --bg-secondary: rgba(0, 0, 0, 0.9);
-  --bg-tertiary: rgba(0, 0, 0, 0.5);
+  --bg-primary: #0a0a12;
+  /* neon-dark */
+  --bg-secondary: #161622;
+  /* neon-surface */
+  --bg-tertiary: #1f1f2e;
   --text-primary: #ffffff;
-  --text-secondary: #d1d5db;
-  --text-muted: #9ca3af;
-  --border-primary: #ffffff;
-  --border-secondary: #6b7280;
-  --accent-primary: #ffffff;
-  --accent-hover: #f3f4f6;
-  --glass-bg: rgba(0, 0, 0, 0.1);
-  --glass-border: rgba(255, 255, 255, 0.2);
+  --text-secondary: #a0a0b0;
+  --text-muted: #6b6b7b;
+  --border-primary: #2d2d3d;
+  --border-secondary: #1f1f2e;
+  --accent-primary: #00f3ff;
+  /* neon-cyan */
+  --accent-secondary: #bc13fe;
+  /* neon-purple */
+  --accent-hover: #00c2cc;
+  --glass-bg: rgba(22, 22, 34, 0.7);
+  --glass-border: rgba(0, 243, 255, 0.1);
+  --shadow-color: rgba(0, 243, 255, 0.15);
 }
 
 /* Global theme classes */
@@ -84,7 +101,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -98,21 +116,27 @@ html, body {
 
 /* Custom utility classes */
 .text-gradient {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary, var(--accent-primary)) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .glass-effect {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 30px var(--shadow-color);
 }
 
 .shadow-glow {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 0 15px var(--shadow-color);
+}
+
+.neon-border {
+  box-shadow: 0 0 5px var(--accent-primary), inset 0 0 5px var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 /* Focus styles */
@@ -164,6 +188,7 @@ html, body {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -174,6 +199,7 @@ html, body {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -185,13 +211,16 @@ html, body {
     opacity: 0;
     transform: scale(0.3);
   }
+
   50% {
     opacity: 1;
     transform: scale(1.05);
   }
+
   70% {
     transform: scale(0.9);
   }
+
   100% {
     opacity: 1;
     transform: scale(1);
@@ -211,61 +240,61 @@ html, body {
 /* Mobile-specific styles */
 @media (max-width: 640px) {
   /* Removed circular dependencies by not redefining Tailwind classes */
-  
+
   .rounded-2xl {
     @apply rounded-xl;
   }
-  
+
   .rounded-xl {
     @apply rounded-lg;
   }
-  
+
   .p-8 {
     @apply p-6;
   }
-  
+
   .p-10 {
     @apply p-6;
   }
-  
+
   .py-10 {
     @apply py-6;
   }
-  
+
   .px-8 {
     @apply px-6;
   }
-  
+
   .text-3xl {
     @apply text-2xl;
   }
-  
+
   .text-2xl {
     @apply text-xl;
   }
-  
+
   .text-lg {
     @apply text-base;
   }
-  
+
   .text-sm {
     @apply text-xs;
   }
-  
+
   .space-y-6 {
     @apply space-y-4;
   }
-  
+
   .space-y-5 {
     @apply space-y-3;
   }
-  
+
   /* Hide scrollbar on mobile for better appearance */
   .overflow-y-auto {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  
+
   .overflow-y-auto::-webkit-scrollbar {
     display: none;
   }

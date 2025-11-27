@@ -83,8 +83,7 @@ const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading
   return (
     <div 
       ref={scrollRef}
-      className="flex-1 overflow-y-auto p-4 space-y-2 relative"
-      style={{ backgroundColor: colors.background }}
+      className="flex-1 overflow-y-auto p-4 space-y-2 relative theme-bg"
       onScroll={handleScroll}
     >
       {/* Loading State */}
@@ -117,12 +116,7 @@ const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading
                 scrollToBottom('smooth');
                 setIsAutoScrolling(true);
               }}
-              className="fixed bottom-24 right-8 z-10 p-3 rounded-full shadow-lg hover:scale-110 transition-all"
-              style={{
-                backgroundColor: isDarkMode ? '#ffffff' : '#000000',
-                color: isDarkMode ? '#000000' : '#ffffff',
-                border: `1px solid ${isDarkMode ? '#d1d5db' : '#4b5563'}`
-              }}
+              className="fixed bottom-24 right-8 z-10 p-3 rounded-full shadow-lg hover:scale-110 transition-all theme-surface theme-text"
               title="Scroll to bottom"
             >
               ↓

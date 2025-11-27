@@ -63,6 +63,34 @@ public class ChatController {
         }
     }
 
+    // Admin deletes group
+    @DeleteMapping("group/{groupId}")
+    public ResponseEntity<?> deleteGroup(
+            @PathVariable Long groupId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        try {
+            // Extract token from header
+            String token = authHeader.replace("Bearer ", "");
+            Long userId = jwtService.validateTokenAndGetUserId(token);
+
+            // Check if user is admin of the group
+            Group group = groupRepository.findById(groupId)
+                    .orElseThrow(() -> new RuntimeException("Group not found"));
+            
+            if (!group.getCreatedBy().equals(userId)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only group admin can delete the group"));
+            }
+
+            // Call ChatService to delete the group
+            chatService.deleteGroup(groupId);
+
+            return ResponseEntity.ok(Map.of("message", "Group deleted successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // Admin adds a member
     @PostMapping("group/{groupId}/add-member")
     public ResponseEntity<?> addMember(

@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import Skeleton from '../../components/ui/Skeleton';    // UPDATED
 import { useGroups } from '../../hooks/useGroups';
 
-const GroupSidebar = ({ 
-  groups, 
-  activeGroupId, 
-  onGroupSelect, 
-  onCreateGroup, 
-  isDarkMode, 
+const GroupSidebar = ({
+  groups,
+  activeGroupId,
+  onGroupSelect,
+  onCreateGroup,
+  isDarkMode,
   colors,
   loading = false,
   currentUserId, // Add this prop from ChatContainer
@@ -18,7 +18,7 @@ const GroupSidebar = ({
   const { leaveGroup, loading: leaveLoading } = useGroups();
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [leavingGroup, setLeavingGroup] = useState(null);
-  
+
   console.log('GroupSidebar rendered with props:', {
     groups: groups?.length,
     activeGroupId,
@@ -28,16 +28,16 @@ const GroupSidebar = ({
   const handleLeaveGroup = async (group) => {
     setLeavingGroup(group.id);
     setShowLeaveConfirm(false);
-    
+
     const result = await leaveGroup(group.id);
-    
+
     if (result.success) {
       console.log(`✅ Successfully left group ${group.id}`);
       // Notify parent component
       if (onGroupLeft) {
         onGroupLeft(group.id);
       }
-      
+
       // If the active group was left, clear it
       if (activeGroupId === group.id) {
         onGroupSelect(null);
@@ -46,7 +46,7 @@ const GroupSidebar = ({
       console.error(`❌ Failed to leave group: ${result.error}`);
       // You might want to show an error toast here
     }
-    
+
     setLeavingGroup(null);
   };
 
@@ -87,7 +87,7 @@ const GroupSidebar = ({
   };
 
   return (
-    <div 
+    <div
       className="h-full flex flex-col"
       style={{ backgroundColor: colors.surface }}
     >
@@ -106,11 +106,10 @@ const GroupSidebar = ({
             <div className={`p-6 flex justify-end space-x-3 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <button
                 onClick={() => setShowLeaveConfirm(false)}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  isDarkMode 
-                    ? 'text-gray-300 hover:text-white' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className={`px-4 py-2 rounded-lg transition-colors ${isDarkMode
+                  ? 'text-gray-300 hover:text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 disabled={leaveLoading}
               >
                 Cancel
@@ -121,11 +120,10 @@ const GroupSidebar = ({
                   if (group) handleLeaveGroup(group);
                 }}
                 disabled={leaveLoading}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  leaveLoading
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-red-500 hover:bg-red-600 text-white'
-                }`}
+                className={`px-4 py-2 rounded-lg transition-colors ${leaveLoading
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+                  }`}
               >
                 {leaveLoading ? 'Leaving...' : 'Leave Group'}
               </button>
@@ -142,7 +140,7 @@ const GroupSidebar = ({
             <button
               onClick={() => navigate('/dashboard')}
               className="p-2 rounded-lg hover-scale theme-text sm:hidden"
-              style={{ 
+              style={{
                 backgroundColor: colors.background,
                 border: `1px solid ${colors.border}`
               }}
@@ -159,7 +157,7 @@ const GroupSidebar = ({
               }
             }}
             className="p-2 rounded-lg hover-scale theme-text flex items-center justify-center cursor-pointer z-50 relative"
-            style={{ 
+            style={{
               backgroundColor: colors.background,
               border: `1px solid ${colors.border}`
             }}
@@ -168,13 +166,13 @@ const GroupSidebar = ({
             <span className="text-xl font-bold">+</span>
           </button>
         </div>
-        
+
         {/* Dashboard link for desktop */}
         <div className="hidden sm:block">
           <button
             onClick={() => navigate('/dashboard')}
             className="w-full p-2 rounded-lg text-left theme-text hover-scale flex items-center gap-2"
-            style={{ 
+            style={{
               backgroundColor: colors.background,
               border: `1px solid ${colors.border}`
             }}
@@ -203,9 +201,9 @@ const GroupSidebar = ({
                 }
               }}
               className="mt-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer z-50 relative"
-              style={{ 
-                backgroundColor: colors.primary,
-                color: 'white'
+              style={{
+                background: `linear-gradient(to right, var(--accent-primary), var(--accent-secondary, var(--accent-primary)))`,
+                color: '#ffffff'
               }}
             >
               Create Group
@@ -215,27 +213,26 @@ const GroupSidebar = ({
           groups.map((group) => {
             const isAdmin = group.createdBy === currentUserId;
             const isLeaving = leavingGroup === group.id;
-            
+
             return (
               <div
                 key={group.id}
                 onClick={() => onGroupSelect(group)}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] group relative ${
-                  activeGroupId === group.id ? 'theme-surface' : ''
-                }`}
+                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] group relative ${activeGroupId === group.id ? 'theme-surface' : ''
+                  }`}
                 style={{
-                  backgroundColor: activeGroupId === group.id 
-                    ? (isDarkMode ? '#374151' : '#e5e7eb')
+                  backgroundColor: activeGroupId === group.id
+                    ? colors.background
                     : 'transparent',
-                  border: activeGroupId === group.id 
-                    ? `1px solid ${colors.border}` 
+                  border: activeGroupId === group.id
+                    ? `1px solid ${colors.border}`
                     : '1px solid transparent'
                 }}
               >
                 <div className="relative">
-                  <div 
+                  <div
                     className="h-10 w-10 rounded-full flex items-center justify-center font-medium text-sm"
-                    style={{ 
+                    style={{
                       backgroundColor: isDarkMode ? '#4b5563' : '#d1d5db',
                       color: isDarkMode ? '#ffffff' : '#000000'
                     }}
@@ -244,7 +241,7 @@ const GroupSidebar = ({
                   </div>
                   {/* Show admin crown for group creator */}
                   {isAdmin && (
-                    <div 
+                    <div
                       className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
                       style={{
                         backgroundColor: '#f59e0b', // amber-500
@@ -257,7 +254,7 @@ const GroupSidebar = ({
                   )}
                   {/* Show online indicator if any members are online */}
                   {group.isOnline && (
-                    <div 
+                    <div
                       className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full animate-pulse"
                       style={{
                         backgroundColor: '#10b981', // green-500
@@ -279,40 +276,31 @@ const GroupSidebar = ({
                       )}
                     </div>
                   </div>
-                  <p className="text-xs theme-text-secondary truncate">
-                    {group.description || 'No description'}
-                  </p>
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-xs theme-text-secondary">
                       {group.memberCount} members
                     </span>
-                    <span className="text-xs theme-text-secondary">
-                      2m ago
-                    </span>
                   </div>
                 </div>
 
-                {/* Leave Group Button (only for non-admin members) */}
-                {!isAdmin && (
-                  <button
-                    onClick={(e) => openLeaveConfirm(group, e)}
-                    disabled={isLeaving}
-                    className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded ${
-                      isLeaving 
-                        ? 'text-gray-400 cursor-not-allowed' 
-                        : 'text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900'
+                {/* Leave Group Button - Available to all users */}
+                <button
+                  onClick={(e) => openLeaveConfirm(group, e)}
+                  disabled={isLeaving}
+                  className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded ${isLeaving
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900'
                     }`}
-                    title="Leave group"
-                  >
-                    {isLeaving ? (
-                      <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    )}
-                  </button>
-                )}
+                  title="Leave group"
+                >
+                  {isLeaving ? (
+                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  )}
+                </button>
               </div>
             );
           })
