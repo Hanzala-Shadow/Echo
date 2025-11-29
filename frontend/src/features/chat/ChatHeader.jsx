@@ -14,7 +14,8 @@ const ChatHeader = ({
   onLeaveGroup, // Function to leave group (available to all users)
   enableAI,
   onAiAction,
-  onToggleUserSidebar // ADD THIS PROP
+  onToggleUserSidebar, // ADD THIS PROP
+  typingStatus
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth(); // ADD THIS - get current user
@@ -108,22 +109,16 @@ const ChatHeader = ({
                 <span className="text-amber-500 text-sm shrink-0" title="You are the admin">👑</span>
               )}
             </div>
+            {/* ✅ UPDATED: Show Typing Status OR Group Info */}
             <div className="flex items-center gap-2 text-sm theme-text-secondary truncate min-w-0">
-              {isPending ? (
-                <>
-                  <span>🆕</span>
-                  <span className="truncate">Start a new conversation</span>
-                </>
+              {typingStatus ? (
+                <span className="text-blue-500 italic animate-pulse font-medium">{typingStatus}</span>
+              ) : isPending ? (
+                <><span>🆕</span><span className="truncate">Start a new conversation</span></>
               ) : isDM ? (
-                <>
-                  <span>👤</span>
-                  <span className="truncate">Direct Message</span>
-                </>
+                <><span>👤</span><span className="truncate">Direct Message</span></>
               ) : (
-                <>
-                  <span>👥</span>
-                  <span className="truncate">{group?.memberCount} members</span>
-                </>
+                <><span>👥</span><span className="truncate">{group?.memberCount} members</span></>
               )}
             </div>
           </div>

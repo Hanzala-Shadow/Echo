@@ -5,12 +5,15 @@ import { encryptFile, base64ToUint8 } from "../utils/cryptoUtils";
 import * as keyCache from "../services/keyCache";
 import * as groupKeyService from "../services/groupKeyService";
 
+import ApiClient from '../services/api';
+
 const useWebSocket = (userId, token) => {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [fileTransfers, setFileTransfers] = useState({}); // For tracking file transfers
   const [mediaUploads, setMediaUploads] = useState({}); // For tracking media uploads
+  const [typingUsers, setTypingUsers] = useState({});
   
   const websocketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -26,6 +29,46 @@ const useWebSocket = (userId, token) => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
+  }, []);
+
+  // UPDATED: Cleanup old typing indicators
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setTypingUsers(prev => {
+        let hasChanges = false;
+        const newState = { ...prev };
+        
+        Object.keys(newState).forEach(groupId => {
+          const groupUsers = { ...newState[groupId] };
+          let groupChanged = false;
+          
+          Object.keys(groupUsers).forEach(uid => {
+            // Handle both old format (timestamp number) and new format (object)
+            const entry = groupUsers[uid];
+            const timestamp = typeof entry === 'object' ? entry.timestamp : entry;
+            
+            // Remove if older than 5 seconds
+            if (now - timestamp > 5000) { 
+              delete groupUsers[uid];
+              groupChanged = true;
+              hasChanges = true;
+            }
+          });
+          
+          if (groupChanged) {
+            if (Object.keys(groupUsers).length === 0) {
+              delete newState[groupId];
+            } else {
+              newState[groupId] = groupUsers;
+            }
+          }
+        });
+        
+        return hasChanges ? newState : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const showNotification = useCallback((title, body) => {
@@ -300,6 +343,48 @@ const handleIncomingMessage = useCallback(async(data) => {
         return [...prev, newMessage];
       }
     });
+  }
+  else if (messageType === 'typing_start') {
+    const groupId = data.group_id || data.groupId;
+    const tUserId = data.user_id || data.userId;
+    
+    // 1. Prefer the username sent with the signal (set in AuthContext)
+    // 2. Fallback to looking up in onlineUsers list
+    // 3. Fallback to 'Someone'
+    let tUsername = data.username || data.senderName || data.sender_name;
+    
+    if (!tUsername) {
+      const knownUser = onlineUsers.find(u => String(u.userId) === String(tUserId));
+      if (knownUser) tUsername = knownUser.username || knownUser.name;
+    }
+
+    const finalUsername = tUsername || 'Someone';
+
+    console.log('DEBUG: Received typing_start. Raw data:', data); 
+    console.log('DEBUG: Extracted username:', tUsername); // <--- IF THIS SAYS "Someone", THE ISSUE IS UPSTREAM
+
+    if (String(tUserId) !== String(userId)) { 
+      setTypingUsers(prev => ({
+        ...prev,
+        [groupId]: {
+          ...(prev[groupId] || {}),
+          [tUserId]: {
+            timestamp: Date.now(),
+            username: tUsername // Store the name!
+          }
+        }
+      }));
+    }
+  }
+  else if (messageType === 'typing_stop') {
+    const groupId = data.group_id || data.groupId;
+    const tUserId = data.user_id || data.userId;
+    setTypingUsers(prev => {
+      if (!prev[groupId]) return prev;
+      const newGroupTyping = { ...prev[groupId] };
+      delete newGroupTyping[tUserId];
+      return { ...prev, [groupId]: newGroupTyping };
+    });
   } 
   else if (messageType === 'status_update' || messageType === 'STATUS_UPDATE') {
     console.log('📊 Status update:', data);
@@ -446,6 +531,8 @@ const handleIncomingMessage = useCallback(async(data) => {
     processedMessageIds.current.clear();
   }, []);
 
+
+
 const sendMessage = useCallback(async (message) => {
   console.log('📤 [WEBSOCKET] Preparing to send message:', message);
 
@@ -546,14 +633,18 @@ if (hasContent) {
     return sendWebSocketMessage(leaveMessage);
   }, [userId, sendWebSocketMessage]);
 
-  const sendTypingIndicator = useCallback((groupId, isTyping) => {
-    const typingMessage = {
+  // UPDATED: Send Typing Indicator with Username
+  const sendTypingIndicator = useCallback((groupId, isTyping, username) => {
+      const payload = {
       type: isTyping ? 'typing_start' : 'typing_stop',
       user_id: userId,
+      username: username, // <--- This MUST be present
       group_id: groupId,
       timestamp: new Date().toISOString()
     };
-    return sendWebSocketMessage(typingMessage);
+    
+    console.log('DEBUG: WebSocket sending payload:', payload); // <--- CHECK THIS LOG
+    return sendWebSocketMessage(payload);
   }, [userId, sendWebSocketMessage]);
 
   const clearGroupMessages = useCallback((groupId) => {
@@ -726,6 +817,7 @@ if (hasContent) {
     isConnected,
     messages,
     onlineUsers,
+    typingUsers,
     fileTransfers,
     mediaUploads,
     sendMessage,

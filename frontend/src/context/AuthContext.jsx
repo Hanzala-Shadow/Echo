@@ -55,14 +55,22 @@ export const AuthProvider = ({ children }) => {
     isConnected,
     messages: webSocketMessages,
     onlineUsers,
+    typingUsers,
     sendMessage,
     joinGroup,
     leaveGroup,
-    sendTypingIndicator,
+    sendTypingIndicator: rawSendTypingIndicator,
     disconnect,
     showNotification,
     uploadMedia
   } = useWebSocket(user?.userId, user?.token);
+
+  // ✅ UPDATED: Robust wrapper to always ensure a username is sent
+  const sendTypingIndicator = useCallback((groupId, isTyping) => {
+    // Try to find the best available name
+    const nameToSend = user?.username || user?.email?.split('@')[0] || 'User';
+    return rawSendTypingIndicator(groupId, isTyping, nameToSend);
+  }, [rawSendTypingIndicator, user]);
 
   const getApiBaseUrl = useCallback(() => {
     try {
@@ -407,6 +415,7 @@ const login = useCallback(async (email, password) => {
     isWebSocketConnected: isConnected,
     webSocketMessages,
     onlineUsers,
+    typingUsers,
     sendWebSocketMessage: sendMessage,
     joinGroup,
     leaveGroup,
@@ -429,7 +438,8 @@ const login = useCallback(async (email, password) => {
     sendTypingIndicator,
     apiBaseUrl,
     showNotification,
-    uploadMedia
+    uploadMedia,
+    typingUsers
   ]);
 
   console.log('AuthProvider - providing context value:', value);

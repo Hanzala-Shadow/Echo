@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Skeleton from '../../components/ui/Skeleton';    // UPDATED
-import ApiClient from '../../services/api';             // UPDATED
+import Skeleton from '../../components/ui/Skeleton';
+import ApiClient from '../../services/api';
 
 const DMSidebar = ({
   groups,
@@ -15,7 +15,7 @@ const DMSidebar = ({
   typingUsers = {},
   onlineUsers = [],
   lastMessageTimestamps = {},
-  newMessageIndicator = {} // Add this prop for new message indicators
+  newMessageIndicator = {}
 }) => {
   const [userDetails, setUserDetails] = useState({});
   const navigate = useNavigate();
@@ -29,7 +29,6 @@ const DMSidebar = ({
       .slice(0, 2);
   };
 
-  // Fetch user details for DMs
   useEffect(() => {
     const fetchUserDetails = async () => {
       const details = {};
@@ -61,10 +60,8 @@ const DMSidebar = ({
     }
   }, [groups, currentUserId]);
 
-  // Format timestamp for last message
   const formatLastMessageTime = (timestamp) => {
     if (!timestamp) return '';
-
     const now = new Date();
     const messageTime = new Date(timestamp);
     const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
@@ -78,12 +75,10 @@ const DMSidebar = ({
     return messageTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
-  // Check if user is online
   const isUserOnline = (userId) => {
     return onlineUsers.some(user => user.userId === userId);
   };
 
-  // Skeleton for DM loading
   const renderDMSkeletons = () => {
     return (
       <div className="space-y-3 p-2">
@@ -100,7 +95,6 @@ const DMSidebar = ({
     );
   };
 
-  // Sort DMs by last message timestamp (newest first)
   const sortedGroups = [...groups].sort((a, b) => {
     const timeA = lastMessageTimestamps[a.id] || '';
     const timeB = lastMessageTimestamps[b.id] || '';
@@ -108,16 +102,11 @@ const DMSidebar = ({
   });
 
   return (
-    <div
-      className="h-full flex flex-col"
-      style={{ backgroundColor: colors.surface }}
-    >
-      {/* UPDATED HEADER WITH DASHBOARD BUTTON */}
+    <div className="h-full flex flex-col" style={{ backgroundColor: colors.surface }}>
       <div className="p-3 border-b theme-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold theme-text">Direct Messages</h2>
-            {/* Dashboard button - visible on mobile */}
             <button
               onClick={() => navigate('/dashboard')}
               className="p-2 rounded-lg hover-scale theme-text sm:hidden"
@@ -131,8 +120,6 @@ const DMSidebar = ({
             </button>
           </div>
         </div>
-
-        {/* Dashboard link for desktop */}
         <div className="hidden sm:block">
           <button
             onClick={() => navigate('/dashboard')}
@@ -163,16 +150,27 @@ const DMSidebar = ({
             const userId = currentUserDetails?.userId;
             const isOnline = userId ? isUserOnline(userId) : false;
             const unreadCount = unreadCounts[group.id] || 0;
-            const isTyping = typingUsers[group.id] && typingUsers[group.id] !== currentUserId;
             const lastMessageTime = lastMessageTimestamps[group.id];
-            const hasNewMessage = newMessageIndicator[group.id]; // Check if there's a new message indicator
+            const hasNewMessage = newMessageIndicator[group.id];
+
+            // ✅ FIXED: Safely extract typing user info
+            const groupTypers = typingUsers[group.id] || {};
+            const activeTypers = Object.entries(groupTypers)
+              .filter(([uid]) => String(uid) !== String(currentUserId))
+              .map(([uid, data]) => data); // Extract the data objects {timestamp, username}
+
+            const isTyping = activeTypers.length > 0;
+            // Use the username from the typing signal, or fall back to generic
+            const typingText = isTyping 
+              ? `${username || 'Someone'} is typing...` 
+              : 'typing...';
 
             return (
               <div
                 key={group.id}
                 onClick={() => onDMSelect(group)}
                 className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 hover:scale-[1.02] ${activeGroupId === group.id ? 'theme-surface' : ''
-                  } ${hasNewMessage ? 'ring-2 ring-blue-500' : ''}`} // Add ring for new messages
+                  } ${hasNewMessage ? 'ring-2 ring-blue-500' : ''}`}
                 style={{
                   backgroundColor: activeGroupId === group.id
                     ? colors.background
@@ -195,11 +193,9 @@ const DMSidebar = ({
                   {isOnline && (
                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full"></div>
                   )}
-                  {/* Unread message indicator */}
                   {unreadCount > 0 && activeGroupId !== group.id && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></div>
                   )}
-                  {/* New message indicator */}
                   {hasNewMessage && activeGroupId !== group.id && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-gray-900 animate-pulse"></div>
                   )}
@@ -222,16 +218,17 @@ const DMSidebar = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {/* ✅ UPDATED: Safe typing indicator display */}
                     {isTyping ? (
-                      <p className="text-xs theme-text-secondary truncate italic">
-                        typing...
+                      <p className="text-xs text-blue-500 truncate italic animate-pulse">
+                        {typingText}
                       </p>
                     ) : (
                       <p className={`text-xs truncate ${unreadCount > 0 && activeGroupId !== group.id ? 'font-bold text-blue-600 dark:text-blue-400' : 'theme-text-secondary'}`}>
                         Direct message
                       </p>
                     )}
-                    {isOnline && (
+                    {isOnline && !isTyping && (
                       <span className="text-green-500 text-xs">●</span>
                     )}
                   </div>

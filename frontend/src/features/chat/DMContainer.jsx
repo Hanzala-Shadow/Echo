@@ -23,7 +23,7 @@ import {
 const DMContainer = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification, onlineUsers, sendTypingIndicator } = useAuth();
+  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification, onlineUsers, sendTypingIndicator, typingUsers } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [activeDM, setActiveDM] = useState(null);
   const [showDMSidebar, setShowDMSidebar] = useState(true);
@@ -34,7 +34,6 @@ const DMContainer = () => {
   const [targetUser, setTargetUser] = useState(null);
   const [dms, setDMs] = useState([]);
   const [unreadCounts, setUnreadCounts] = useState({});
-  const [typingUsers, setTypingUsers] = useState({});
   const [error, setError] = useState(null);
   const [lastMessageTimestamps, setLastMessageTimestamps] = useState({});
   //const [pendingDMInfo, setPendingDMInfo] = useState(null); // Store info for DM that needs to be created
@@ -52,6 +51,18 @@ const DMContainer = () => {
     }
     return null;
   });
+
+  // ✅ Construct Typing Status String for DMs
+  const typingStatusString = useMemo(() => {
+    if (!activeDM || !typingUsers[activeDM.id]) return null;
+    
+    // In DMs, we only care if the OTHER person is typing
+    // typingUsers object structure: { [groupId]: { [userId]: timestamp } }
+    const groupTypers = typingUsers[activeDM.id];
+    const otherUserTyping = Object.keys(groupTypers).some(id => String(id) !== String(user.userId));
+
+    return otherUserTyping ? "Typing..." : null;
+  }, [activeDM, typingUsers, user.userId]);
 
   // Refs for better state management
   const activeDMRef = useRef(activeDM);
@@ -250,23 +261,7 @@ const DMContainer = () => {
     setLastMessageTimestamps(timestamps);
   }, [webSocketMessages, dms, user?.userId]);
 
-  // Handle typing indicators
-  useEffect(() => {
-    const typingMessages = webSocketMessages.filter(msg =>
-      msg.type === 'typing_start' || msg.type === 'typing_stop'
-    );
-
-    const newTypingUsers = {};
-    typingMessages.forEach(msg => {
-      if (msg.type === 'typing_start') {
-        newTypingUsers[msg.group_id] = msg.user_id;
-      } else if (msg.type === 'typing_stop') {
-        delete newTypingUsers[msg.group_id];
-      }
-    });
-
-    setTypingUsers(newTypingUsers);
-  }, [webSocketMessages]);
+  
 
   // ADD THIS EFFECT - Auto-hide sidebars on mobile when DM is selected
   useEffect(() => {
@@ -968,10 +963,16 @@ const DMContainer = () => {
               </>
             )}
 
-            <div className="flex-1 text-center">
-              <h3 className="font-medium theme-text truncate">
+            {/* ✅ UPDATED: Mobile Title Area with Typing Indicator */}
+            <div className="flex-1 text-center min-w-0 overflow-hidden px-2 flex flex-col justify-center">
+              <h3 className="font-medium theme-text truncate text-sm leading-tight">
                 {activeDM ? activeDM.name.replace('DM with ', '') : 'Direct Messages'}
               </h3>
+              {activeDM && typingStatusString && (
+                <span className="text-[10px] text-blue-500 italic animate-pulse truncate leading-tight">
+                  {typingStatusString}
+                </span>
+              )}
             </div>
 
             {/* Add user sidebar toggle when DM is active */}
@@ -1000,6 +1001,7 @@ const DMContainer = () => {
             isDM={true}
             isPending={!!pendingDMInfo && !activeDM}
             enableAI={false}
+            typingStatus={typingStatusString}
           />
         </div>
 

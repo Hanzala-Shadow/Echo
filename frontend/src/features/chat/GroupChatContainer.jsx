@@ -20,7 +20,7 @@ import AiResultModal from './AI_ResultModal';
 const ChatContainer = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification, sendTypingIndicator } = useAuth();
+  const { user, token, isWebSocketConnected, webSocketMessages, sendWebSocketMessage, joinGroup, leaveGroup, showNotification, sendTypingIndicator, typingUsers } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [activeGroup, setActiveGroup] = useState(null);
   const [showGroupSidebar, setShowGroupSidebar] = useState(true);
@@ -38,6 +38,25 @@ const ChatContainer = () => {
   const [showAiResultModal, setShowAiResultModal] = useState(false);
   const [aiResultData, setAiResultData] = useState(null);
   const [aiResultType, setAiResultType] = useState(null);
+
+  // ✅ Construct Typing Status String for Groups
+  const typingStatusString = useMemo(() => {
+    if (!activeGroup || !typingUsers[activeGroup.id]) return null;
+    
+    const typingUserIds = Object.keys(typingUsers[activeGroup.id]);
+    if (typingUserIds.length === 0) return null;
+
+    // Map IDs to Names
+    const names = typingUserIds.map(id => {
+      const member = groupMembers.find(m => String(m.userId) === String(id));
+      return member ? member.name : `User ${id}`;
+    });
+
+    if (names.length === 1) return `${names[0]} is typing...`;
+    if (names.length === 2) return `${names[0]} and ${names[1]} are typing...`;
+    if (names.length > 2) return `${names[0]}, ${names[1]} and ${names.length - 2} others are typing...`;
+    return null;
+  }, [activeGroup, typingUsers, groupMembers]);
 
   // ADDED THIS - Get group member usernames for the hook
   // 🆕 FIX: Stabilize this dependency to prevent infinite loops
@@ -806,6 +825,7 @@ const ChatContainer = () => {
                 setLoadedGroups(new Set());
               }
             }}
+            typingUsers={typingUsers}
           />
         )}
       </div>
@@ -858,10 +878,16 @@ const ChatContainer = () => {
               </>
             )}
 
-            <div className="flex-1 text-center min-w-0 overflow-hidden px-2">
-              <h3 className="font-medium theme-text truncate">
+            {/* ✅ UPDATED: Mobile Title Area with Typing Indicator */}
+            <div className="flex-1 text-center min-w-0 overflow-hidden px-2 flex flex-col justify-center">
+              <h3 className="font-medium theme-text truncate text-sm leading-tight">
                 {activeGroup ? activeGroup.name : 'Select a group'}
               </h3>
+              {activeGroup && typingStatusString && (
+                <span className="text-[10px] text-blue-500 italic animate-pulse truncate leading-tight">
+                  {typingStatusString}
+                </span>
+              )}
             </div>
 
             {/* Add leave group and user sidebar toggle when group is active */}
@@ -934,6 +960,7 @@ const ChatContainer = () => {
             onLeaveGroup={handleLeaveGroup} // Function to leave group (available to all users)
             enableAI={activeGroup?.aiEnabled}
             onAiAction={handleAiAction}
+            typingStatus={typingStatusString}
           />
         </div>
 

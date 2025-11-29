@@ -11,19 +11,14 @@ const GroupSidebar = ({
   isDarkMode,
   colors,
   loading = false,
-  currentUserId, // Add this prop from ChatContainer
-  onGroupLeft // Add this callback
+  currentUserId,
+  onGroupLeft,
+  typingUsers = {} // ✅ ADDED: Typing users prop
 }) => {
   const navigate = useNavigate();
   const { leaveGroup, loading: leaveLoading } = useGroups();
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [leavingGroup, setLeavingGroup] = useState(null);
-
-  console.log('GroupSidebar rendered with props:', {
-    groups: groups?.length,
-    activeGroupId,
-    currentUserId
-  });
 
   const handleLeaveGroup = async (group) => {
     setLeavingGroup(group.id);
@@ -33,25 +28,21 @@ const GroupSidebar = ({
 
     if (result.success) {
       console.log(`✅ Successfully left group ${group.id}`);
-      // Notify parent component
       if (onGroupLeft) {
         onGroupLeft(group.id);
       }
-
-      // If the active group was left, clear it
       if (activeGroupId === group.id) {
         onGroupSelect(null);
       }
     } else {
       console.error(`❌ Failed to leave group: ${result.error}`);
-      // You might want to show an error toast here
     }
 
     setLeavingGroup(null);
   };
 
   const openLeaveConfirm = (group, e) => {
-    e.stopPropagation(); // Prevent group selection
+    e.stopPropagation();
     setLeavingGroup(group.id);
     setShowLeaveConfirm(true);
   };
@@ -136,7 +127,6 @@ const GroupSidebar = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold theme-text">Groups</h2>
-            {/* Dashboard button - visible on mobile */}
             <button
               onClick={() => navigate('/dashboard')}
               className="p-2 rounded-lg hover-scale theme-text sm:hidden"
@@ -151,7 +141,6 @@ const GroupSidebar = ({
           </div>
           <button
             onClick={(e) => {
-              console.log('🎯 Create group button clicked - PLUS SIGN');
               if (onCreateGroup && typeof onCreateGroup === 'function') {
                 onCreateGroup();
               }
@@ -167,7 +156,6 @@ const GroupSidebar = ({
           </button>
         </div>
 
-        {/* Dashboard link for desktop */}
         <div className="hidden sm:block">
           <button
             onClick={() => navigate('/dashboard')}
@@ -213,6 +201,13 @@ const GroupSidebar = ({
           groups.map((group) => {
             const isAdmin = group.createdBy === currentUserId;
             const isLeaving = leavingGroup === group.id;
+            
+            // ✅ CHECK IF ANYONE IS TYPING IN THIS GROUP
+            const groupTypers = typingUsers[group.id] || {};
+            // Convert to array of entries: [userId, {timestamp, username}]
+            const activeTypers = Object.entries(groupTypers)
+              .filter(([uid]) => String(uid) !== String(currentUserId));
+            const isTyping = activeTypers.length > 0;
 
             return (
               <div
@@ -239,12 +234,11 @@ const GroupSidebar = ({
                   >
                     {getInitials(group.name)}
                   </div>
-                  {/* Show admin crown for group creator */}
                   {isAdmin && (
                     <div
                       className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
                       style={{
-                        backgroundColor: '#f59e0b', // amber-500
+                        backgroundColor: '#f59e0b',
                         border: '2px solid white'
                       }}
                       title="Group Admin"
@@ -252,12 +246,11 @@ const GroupSidebar = ({
                       <span className="text-xs">👑</span>
                     </div>
                   )}
-                  {/* Show online indicator if any members are online */}
                   {group.isOnline && (
                     <div
                       className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 rounded-full animate-pulse"
                       style={{
-                        backgroundColor: '#10b981', // green-500
+                        backgroundColor: '#10b981',
                         borderColor: 'white',
                         boxShadow: '0 0 0 1px white'
                       }}
@@ -270,20 +263,34 @@ const GroupSidebar = ({
                   <div className="flex items-center gap-1 mb-0.5">
                     <h3 className="font-medium truncate theme-text text-sm">{group.name}</h3>
                     <div className="flex items-center gap-1">
-                      <span className="text-xs theme-text-secondary">👥</span>
-                      {isAdmin && (
-                        <span className="text-xs text-amber-500" title="You are the admin">👑</span>
+                      {/* Only show member count if NOT typing */}
+                      {!isTyping && (
+                        <>
+                          <span className="text-xs theme-text-secondary">👥</span>
+                          {isAdmin && (
+                            <span className="text-xs text-amber-500" title="You are the admin">👑</span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
+                  
                   <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs theme-text-secondary">
-                      {group.memberCount} members
-                    </span>
+                    {/* ✅ SHOW TYPING NAMES */}
+                    {isTyping ? (
+                      <span className="text-xs text-blue-500 italic animate-pulse truncate">
+                        {activeTypers.length === 1 
+                          ? `${activeTypers[0][1].username || 'Someone'} is typing...`
+                          : 'Multiple people typing...'}
+                      </span>
+                    ) : (
+                      <span className="text-xs theme-text-secondary">
+                        {group.memberCount} members
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Leave Group Button - Available to all users */}
                 <button
                   onClick={(e) => openLeaveConfirm(group, e)}
                   disabled={isLeaving}
