@@ -15,6 +15,8 @@ import GroupSidebar from '../groups/GroupSidebar';
 import GroupCreateModal from '../groups/GroupCreateModal';
 import AddMemberModal from '../groups/AddMemberModal';
 
+import AiResultModal from './AI_ResultModal';
+
 const ChatContainer = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,6 +33,11 @@ const ChatContainer = () => {
   const [groupMembers, setGroupMembers] = useState([]); // Track members of active group
   const messagesEndRef = useRef(null);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [showMobileAiTools, setShowMobileAiTools] = useState(false);
+
+  const [showAiResultModal, setShowAiResultModal] = useState(false);
+  const [aiResultData, setAiResultData] = useState(null);
+  const [aiResultType, setAiResultType] = useState(null);
 
   // ADDED THIS - Get group member usernames for the hook
   // 🆕 FIX: Stabilize this dependency to prevent infinite loops
@@ -645,7 +652,7 @@ const ChatContainer = () => {
 
     // Use the localMessages state we already have
     // Filter to get only text messages (AI can't read images yet usually)
-    const textMessages = localMessages
+    const textMessages = allMessages
       .filter(msg => msg.type === 'text' && msg.content)
       .map(msg => ({
         sender_name: msg.senderName,
@@ -657,24 +664,22 @@ const ChatContainer = () => {
     try {
       if (actionType === 'summarize') {
         const result = await ApiClient.ai.summarize(activeGroup.id, textMessages);
-        alert(`📝 Summary:\n\n${result.summary}`); // Simple alert for now, or use a Modal
+        // REPLACE ALERT WITH STATE UPDATE
+        setAiResultData(result);
+        setAiResultType('summarize');
+        setShowAiResultModal(true);
       }
       else if (actionType === 'deadlines') {
         const result = await ApiClient.ai.extractDeadlines(activeGroup.id, textMessages);
-        const allDeadlines = result.results.flatMap(r => r.deadlines || []);
-
-        if (allDeadlines.length === 0) {
-          alert("No upcoming deadlines found.");
-        } else {
-          const text = allDeadlines.map(d =>
-            `• ${d.date_text}: ${d.context} (from ${d.sender_name || 'Unknown'})`
-          ).join('\n');
-          alert(`📅 Upcoming Deadlines:\n\n${text}`);
-        }
+        // REPLACE ALERT WITH STATE UPDATE
+        setAiResultData(result);
+        setAiResultType('deadlines');
+        setShowAiResultModal(true);
       }
     } catch (error) {
       console.error("AI Action Failed:", error);
-      alert("Failed to perform AI action.");
+      // Use existing notification utility for errors
+      showNotification("Failed to perform AI action: " + (error.message || 'Unknown Error'), 'error');
     }
   };
 
@@ -685,6 +690,7 @@ const ChatContainer = () => {
       if (window.innerWidth < 640) { // sm breakpoint
         setShowGroupSidebar(false);
         setShowUserSidebar(false);
+        setShowMobileAiTools(false);
       }
     }
   }, [activeGroup]);
@@ -861,6 +867,35 @@ const ChatContainer = () => {
             {/* Add leave group and user sidebar toggle when group is active */}
             {activeGroup && (
               <>
+                {/* AI Tools Toggle (NEW) */}
+                {activeGroup?.aiEnabled && (
+                    <div className="relative">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setShowMobileAiTools(prev => !prev); }}
+                            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-purple-500"
+                            title="AI Tools"
+                        >
+                            ✨
+                        </button>
+                        {showMobileAiTools && (
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border theme-border z-50 p-1">
+                                <button 
+                                    onClick={() => { setShowMobileAiTools(false); handleAiAction('summarize'); }} 
+                                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex gap-2"
+                                >
+                                    📝 <span>Summarize Chat</span>
+                                </button>
+                                <button 
+                                    onClick={() => { setShowMobileAiTools(false); handleAiAction('deadlines'); }} 
+                                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex gap-2"
+                                >
+                                    📅 <span>Extract Deadlines</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <button
                   onClick={handleLeaveGroup}
                   className="p-2 rounded-lg theme-text hover-scale"
@@ -1017,6 +1052,20 @@ const ChatContainer = () => {
           </div>
         </div>
       )}
+
+      {/* NEW: AI Result Modal - RENDER HERE */}
+      {showAiResultModal && aiResultData && (
+        <AiResultModal
+          isOpen={showAiResultModal}
+          onClose={() => setShowAiResultModal(false)}
+          result={aiResultData}
+          type={aiResultType}
+          groupName={activeGroup?.name}
+          isDarkMode={isDarkMode}
+          colors={colors}
+        />
+      )}
+      
     </div>
   );
 };

@@ -313,7 +313,7 @@ def main():
     print("="*60)
     
     start_time = time.time()
-    result = summarizer.summarize(test_messages_mixed, mode="hybrid")
+    result = summarizer.summarize(test_messages_mixed, mode="hybrid", style="structured")
     total_time = time.time() - start_time
     
     print(f"\n🚀 Total execution time: {total_time:.2f}s")

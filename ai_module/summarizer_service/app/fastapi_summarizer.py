@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
-from summarizer_model import summarize_messages  # your module
+from summarizer_model import ChatSummarizer  # your module
 from fastapi.middleware.cors import CORSMiddleware
+
+summarizer = ChatSummarizer()
 
 # -------------------------------
 # Request Schema
@@ -46,7 +48,7 @@ def summarize_conversation(input: ConversationInput):
     try:
         # Convert Pydantic models to list of dicts
         messages_list = [msg.dict() for msg in input.messages]
-        summary = summarize_messages(messages_list, mode=input.mode, style=input.style)
+        summary = summarizer.summarize(messages_list, mode=input.mode, style=input.style)
         return {
             "total_messages": len(messages_list),
             "summary": summary

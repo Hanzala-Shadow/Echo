@@ -125,11 +125,13 @@ export const AuthProvider = ({ children }) => {
       const userId = userData.userId || userData.id;
       console.log('🎯 Extracted userId:', userId);
 
+      const username = userData.username;
+
       if (!userId) {
         throw new Error('Could not find userId in response');
       }
 
-      return userId;
+      return { userId, username };
     } catch (error) {
       console.error('❌ Error fetching user ID:', error);
       return null;
@@ -152,7 +154,8 @@ const login = useCallback(async (email, password) => {
 
     // 2️⃣ Fetch userId
     console.log('2️⃣ Fetching user ID...');
-    const userId = await getUserIdByEmail(email, token);
+    const { userId, username: actualUsername } = await getUserIdByEmail(email, token);
+    if (!userId) throw new Error('Could not retrieve user ID');
     if (!userId) throw new Error('Could not retrieve user ID');
     console.log('✅ User ID retrieved:', userId);
 
@@ -229,7 +232,7 @@ const login = useCallback(async (email, password) => {
     const loggedInUser = {
       email,
       token,
-      username: data.username || email.split('@')[0],
+      username: actualUsername || email.split('@')[0],
       userId,
       publicKey: keyRes?.publicKey,
     };
