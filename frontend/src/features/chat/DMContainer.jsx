@@ -889,7 +889,7 @@ const DMContainer = () => {
   }, [activeDM]);
 
   return (
-    <div className="flex h-screen theme-bg flex-col sm:flex-row">
+    <div className="flex h-screen theme-bg flex-col sm:flex-row animate-slide-in-right">
       {/* DM Sidebar - Hidden by default on mobile */}
       <div
         className={`transition-all duration-300 ${showDMSidebar ? 'w-full sm:w-80 fixed sm:relative z-30 sm:z-auto inset-0 sm:inset-auto theme-surface' : 'w-0 fixed sm:relative'} overflow-hidden border-r theme-border sm:block`}
@@ -1006,7 +1006,7 @@ const DMContainer = () => {
         </div>
 
         {/* 🆕 FIX: Make MessageList scrollable with proper spacing */}
-        <div className="flex-1 overflow-y-auto theme-bg">
+        <div key={activeDM?.id || 'empty'} className="flex-1 overflow-y-auto theme-bg animate-fade-in">
           <MessageList
             messages={allMessages}
             currentUserId={user?.userId}

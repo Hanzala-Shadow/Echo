@@ -515,7 +515,7 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
   if (!hasMedia && !hasContent && !message.isCurrentUser) {
     console.log('⚠️ [MESSAGE_BUBBLE] Empty message from recipient - possible missing media');
     return (
-      <div className={`flex mb-3 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`flex mb-3 ${isCurrentUser ? 'justify-end' : 'justify-start'} animate-pop-in`}>
         <div className="max-w-[70%] group">
           {!isCurrentUser && (
             <div className="text-xs theme-text-secondary mb-1 ml-3">
@@ -541,7 +541,7 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
   }
 
   return (
-    <div className={`flex mb-3 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex mb-3 ${isCurrentUser ? 'justify-end' : 'justify-start'} animate-pop-in`}>
       <div className="max-w-[70%] group">
         {!isCurrentUser && (
           <div className="text-xs theme-text-secondary mb-1 ml-3">
