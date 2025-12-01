@@ -10,17 +10,20 @@ const ChatHeader = ({
   colors,
   isDM = false,
   isPending = false,
-  onAddMember, // ADD THIS PROP - function to open add member modal
-  onLeaveGroup, // Function to leave group (available to all users)
+  onAddMember,
+  onLeaveGroup,
   enableAI,
   onAiAction,
-  onToggleUserSidebar, // ADD THIS PROP
+  onToggleUserSidebar,
   typingStatus
 }) => {
   const navigate = useNavigate();
-  const { user } = useAuth(); // ADD THIS - get current user
+  const { user } = useAuth(); 
 
   const [showAiTools, setShowAiTools] = useState(false);
+
+  // Ensure enableAI is a boolean
+  const isAiEnabled = !!enableAI;
 
   if (!group && !isPending) {
     return (
@@ -34,9 +37,6 @@ const ChatHeader = ({
   }
 
   const handleSummarize = async () => {
-    // You typically need the last ~50 messages. 
-    // Ideally, ChatContainer should handle this logic via a callback 
-    // like `onAiAction('summarize')` because ChatHeader doesn't have the messages.
     if (onAiAction) onAiAction('summarize');
     setShowAiTools(false);
   };
@@ -69,11 +69,11 @@ const ChatHeader = ({
       style={{ backgroundColor: colors.surface }}>
 
       {/* Left side - Back button, avatar, group info */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
         {/* Back button for mobile */}
         <button
           onClick={handleBackClick}
-          className="sm:hidden p-2 rounded-lg hover-scale theme-text mr-2"
+          className="sm:hidden p-2 rounded-lg hover-scale theme-text mr-2 shrink-0"
           style={{
             backgroundColor: colors.background,
             border: `1px solid ${colors.border}`
@@ -101,7 +101,8 @@ const ChatHeader = ({
 
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-semibold theme-text truncate flex-1 min-w-0">
+              {/* FIXED: Removed flex-1 to keep crown next to name, added truncate to handle long names */}
+              <h3 className="font-semibold theme-text truncate min-w-0">
                 {displayName}
               </h3>
               {/* Show admin crown if current user is the group admin */}
@@ -109,7 +110,7 @@ const ChatHeader = ({
                 <span className="text-amber-500 text-sm shrink-0" title="You are the admin">👑</span>
               )}
             </div>
-            {/* ✅ UPDATED: Show Typing Status OR Group Info */}
+            {/* ✅ UPDATED: Show Typing Status OR Group Info WITH AI LABEL */}
             <div className="flex items-center gap-2 text-sm theme-text-secondary truncate min-w-0">
               {typingStatus ? (
                 <span className="text-blue-500 italic animate-pulse font-medium">{typingStatus}</span>
@@ -118,7 +119,29 @@ const ChatHeader = ({
               ) : isDM ? (
                 <><span>👤</span><span className="truncate">Direct Message</span></>
               ) : (
-                <><span>👥</span><span className="truncate">{group?.memberCount} members</span></>
+                <div className="flex items-center gap-2 min-w-0 overflow-hidden w-full">
+                  {/* Member count - allow shrinking/truncating */}
+                  <span className="flex items-center gap-1 min-w-0 truncate">
+                    <span>👥</span>
+                    <span className="truncate">{group?.memberCount} members</span>
+                  </span>
+                  
+                  {/* AI Enabled Label - Prioritize visibility */}
+                  {isAiEnabled && (
+                    <>
+                      <span className="text-gray-300 dark:text-gray-600 shrink-0">•</span>
+                      <div 
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs border border-purple-200 dark:border-purple-700 shrink-0 cursor-help hover:bg-purple-200 dark:hover:bg-purple-900/60 transition-colors"
+                        title="AI is enabled in this chat. Your messages are shared with Echo AI."
+                      >
+                        <span className="text-[10px]">✨</span>
+                        {/* FIXED: Replaced xs: with sm: for standard breakpoints */}
+                        <span className="font-medium hidden sm:inline">AI Enabled</span>
+                        <span className="font-medium sm:hidden">AI</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -127,8 +150,8 @@ const ChatHeader = ({
 
       {/* Right side - Connection status and Group Actions */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        {/* Leave Group Button - Available to all users in group chats */}
-        {group && !isDM && !isPending && onLeaveGroup && (
+        {/* Leave Group Button - Available to all users in group chats EXCEPT admin */}
+        {group && !isDM && !isPending && onLeaveGroup && group.createdBy !== user?.userId && (
           <button
             onClick={onLeaveGroup}
             className="p-2 rounded-lg hover-scale theme-text flex items-center gap-1"
@@ -151,8 +174,8 @@ const ChatHeader = ({
           <span className="hidden sm:inline">{isConnected ? 'Connected' : 'Disconnected'}</span>
         </div>
 
-        {/* ✅ FIX: Only show if AI is enabled for this group */}
-        {enableAI && (
+        {/* Only show if AI is enabled for this group */}
+        {isAiEnabled && (
           <div className="relative">
             <button
               onClick={() => setShowAiTools(!showAiTools)}
@@ -163,7 +186,7 @@ const ChatHeader = ({
             </button>
 
             {showAiTools && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border theme-border z-50 p-1">
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border theme-border z-50 p-1 animate-fade-in-up">
                 <button onClick={handleSummarize} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex gap-2">
                   📝 <span>Summarize Chat</span>
                 </button>
@@ -178,7 +201,7 @@ const ChatHeader = ({
         {/* User Sidebar Toggle (Mobile/Desktop) */}
         <button
           onClick={onToggleUserSidebar}
-          className="p-2 rounded-lg hover-scale theme-text lg:hidden" // Show on mobile/tablet, hide on large screens if sidebar is persistent
+          className="p-2 rounded-lg hover-scale theme-text lg:hidden"
           style={{
             backgroundColor: colors.background,
             border: `1px solid ${colors.border}`
