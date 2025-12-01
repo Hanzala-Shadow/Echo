@@ -76,6 +76,17 @@ const Dashboard = () => {
     navigate('/login');
   };
 
+  // ✅ HELPER: Generate a consistent unique color from any string (name/id)
+  const stringToColor = (str) => {
+    if (!str) return '#6b7280'; // Default gray
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - c.length) + c;
+  };
+
   const tabs = [
     { id: 'groups', label: 'Groups', icon: '👥' },
     { id: 'users', label: 'Users', icon: '👤' },
@@ -137,9 +148,18 @@ const Dashboard = () => {
 
         <div className="flex items-center">
           <div className="relative">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold mr-3 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
-              }`}>
-              {username?.charAt(0)?.toUpperCase() || 'U'}
+            {/* ✅ UPDATED: Dynamic Gradient Avatar */}
+            <div 
+              className="w-10 h-10 rounded-full flex items-center justify-center font-bold mr-3 text-white shadow-inner relative overflow-hidden group-hover:scale-110 transition-transform duration-300"
+              style={{
+                // Generate a unique gradient based on the username
+                background: `linear-gradient(135deg, ${stringToColor(username)}, ${stringToColor(username)}88)`
+              }}
+            >
+              <div className="absolute inset-0 bg-black/10"></div>
+              <span className="relative z-10 text-shadow-sm">
+                {username?.charAt(0)?.toUpperCase() || 'U'}
+              </span>
             </div>
             {initialStatusProcessed && isOnline && (
               <div className="absolute bottom-0 right-3 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
@@ -334,8 +354,19 @@ const Dashboard = () => {
 
                         <div className="flex justify-between items-start relative z-10">
                           <div className="flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-lg transition-transform duration-300 group-hover:scale-110 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
-                              {group.groupName ? group.groupName.charAt(0).toUpperCase() : 'G'}
+                            {/* ✅ UPDATED: Dynamic Gradient Group Icon */}
+                            <div 
+                              className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-lg transition-transform duration-300 group-hover:scale-110 text-white relative overflow-hidden"
+                              style={{
+                                background: `linear-gradient(135deg, ${stringToColor(group.groupName || 'G')}, ${stringToColor(group.groupName || 'G')}aa)`
+                              }}
+                            >
+                              {/* Techy Shine Effect */}
+                              <div className="absolute top-0 -left-4 w-8 h-full bg-white/20 skew-x-12 blur-sm group-hover:translate-x-12 transition-transform duration-700 ease-in-out"></div>
+                              
+                              <span className="relative z-10 text-shadow-md">
+                                {group.groupName ? group.groupName.charAt(0).toUpperCase() : 'G'}
+                              </span>
                             </div>
 
                             <div>
