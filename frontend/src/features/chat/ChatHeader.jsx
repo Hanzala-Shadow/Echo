@@ -65,8 +65,20 @@ const ChatHeader = ({
     : (isDM && targetUser ? targetUser.username : group?.name);
 
   return (
-    <div className="h-16 border-b-2 theme-border flex items-center justify-between px-4"
-      style={{ backgroundColor: colors.surface }}>
+    <div 
+      className={`h-16 border-b-2 flex items-center justify-between px-4 transition-all duration-500 z-10
+        ${isAiEnabled 
+          ? 'shadow-[0_4px_20px_-5px_rgba(168,85,247,0.4)] border-purple-500/30' 
+          : 'theme-border'}
+      `}
+      style={{ 
+        backgroundColor: colors.surface,
+        // Add a subtle gradient overlay if AI is on
+        backgroundImage: isAiEnabled 
+          ? `linear-gradient(to right, ${isDarkMode ? 'rgba(88, 28, 135, 0.2)' : 'rgba(233, 213, 255, 0.4)'}, transparent)` 
+          : 'none'
+      }}
+    >
 
       {/* Left side - Back button, avatar, group info */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
