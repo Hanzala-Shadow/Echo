@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';    // UPDATED (../ -> ../../)
+import { useAuth } from '../../context/AuthContext';
+import SplashScreen from '../../components/ui/SplashScreen'; // Import the new splash screen
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -12,14 +13,8 @@ const ProtectedRoute = ({ children }) => {
   console.log('ProtectedRoute - loading:', loading);
   
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center theme-bg">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="theme-text">Loading...</p>
-        </div>
-      </div>
-    );
+    // Replaced generic spinner with Techy Splash Screen
+    return <SplashScreen />;
   }
   
   // Check if user exists and has required properties

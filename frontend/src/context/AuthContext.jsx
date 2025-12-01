@@ -19,6 +19,26 @@ export const useAuth = () => {
   return context;
 };
 
+// ✅ HELPER: Ensure a minimum execution time for the splash screen
+const withMinDelay = async (promise, delayMs = 7000) => {
+  const start = Date.now();
+  try {
+    const result = await promise;
+    const elapsed = Date.now() - start;
+    if (elapsed < delayMs) {
+      await new Promise(resolve => setTimeout(resolve, delayMs - elapsed));
+    }
+    return result;
+  } catch (error) {
+    // Wait out the delay even on error to prevent jitter
+    const elapsed = Date.now() - start;
+    if (elapsed < delayMs) {
+      await new Promise(resolve => setTimeout(resolve, delayMs - elapsed));
+    }
+    throw error;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('user');
@@ -150,6 +170,7 @@ export const AuthProvider = ({ children }) => {
 const login = useCallback(async (email, password) => {
   setLoading(true);
   try {
+    await withMinDelay((async () => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔐 Starting login process...');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -257,7 +278,7 @@ const login = useCallback(async (email, password) => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return loggedInUser;
-
+  })());
   } catch (error) {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('❌ Login error:', error);
@@ -287,6 +308,7 @@ const login = useCallback(async (email, password) => {
         return;
       }
 
+      await withMinDelay((async () => {
       const savedSessionKey = localStorage.getItem('sessionKey');
       if (savedSessionKey) {
         try {
@@ -321,7 +343,7 @@ const login = useCallback(async (email, password) => {
           window.location.reload();
         }
       }
-
+    })());
       // Done loading
       setLoading(false);
     };
