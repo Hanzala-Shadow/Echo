@@ -6,6 +6,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        // Add this line
+        urdu: ['"Noto Nastaliq Urdu"', 'serif'], 
+      },
       colors: {
         // Dynamic Theme Colors (mapped to CSS variables)
         theme: {

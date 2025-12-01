@@ -32,6 +32,12 @@ const MessageInput = ({
   const [isCheckingToxicity, setIsCheckingToxicity] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false); // Add this state
 
+  // ✅ HELPER: Detect Urdu
+  const isUrdu = (text) => /[\u0600-\u06FF]/.test(text);
+  
+  // ✅ CHECK: Is the user currently typing Urdu?
+  const isTypingUrdu = isUrdu(message);
+
   // Handle emoji selection
   const onEmojiClick = (emojiData) => {
     setMessage(prev => prev + emojiData.emoji);
@@ -391,8 +397,12 @@ const MessageInput = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled || isUploading}
-            className={`w-full min-h-[40px] max-h-[120px] resize-none py-2 px-4 pr-16 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text'
-              }`}
+            dir={isTypingUrdu ? "rtl" : "ltr"} // ✅ Auto-switch direction
+            className={`w-full min-h-[40px] max-h-[120px] resize-none py-2 px-4 pr-16 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text'
+              } ${
+              isTypingUrdu ? 'font-urdu leading-loose text-lg' : '' // ✅ Auto-switch font
+            }`}
             style={{
               backgroundColor: colors.background,
               borderColor: colors.border,

@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ✅ SELF-HOSTED URDU FONT */
+@font-face {
+  font-family: 'Noto Nastaliq Urdu';
+  src: url('/fonts/NotoNastaliqUrdu.ttf') format('truetype'); /* Path matches public folder */
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* Ensures text is visible while font loads */
+}
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

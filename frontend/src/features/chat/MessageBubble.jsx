@@ -507,8 +507,18 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
     );
   }
 
+  // ✅ HELPER: Detect if text contains Urdu/Arabic characters
+  const isUrdu = (text) => {
+    if (!text) return false;
+    // Checks for Arabic script unicode range
+    return /[\u0600-\u06FF]/.test(text);
+  };
+
   const hasMedia = isMediaMessage(message);
   const hasContent = message.content && message.content.trim() !== '';
+
+   // ✅ CHECK: Determine if THIS specific message is Urdu
+  const isMessageUrdu = hasContent && isUrdu(message.content);
 
   console.log('📊 [MESSAGE_BUBBLE] Message processing:', {
     hasMedia,
@@ -561,7 +571,15 @@ const { decryptedUrl, loading, error } = useDecryptedMedia(
             } ${hasMedia ? 'pb-1' : ''}`}
         >
           {hasContent && (
-            <div className="whitespace-pre-wrap">
+           <div 
+              // ✅ MODIFIED: Apply conditional styling for Urdu
+              className={`whitespace-pre-wrap ${
+                isMessageUrdu 
+                  ? 'font-urdu text-right leading-loose text-lg pt-1' // Urdu styles
+                  : 'text-left'                                       // Default styles
+              }`}
+              dir={isMessageUrdu ? "rtl" : "ltr"} // ✅ Auto-switch direction
+            >
               {message.content}
 
               {/* ✅ NEW: Translation Result */}
