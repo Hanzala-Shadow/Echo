@@ -80,6 +80,30 @@ const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading
     );
   };
 
+  // ✅ HELPER: Group messages by date
+  const groupMessagesByDate = (msgs) => {
+    const groups = {};
+    msgs.forEach(msg => {
+      // Check for valid timestamp
+      if (!msg.timestamp) return;
+      
+      const date = new Date(msg.timestamp).toLocaleDateString([], { 
+        weekday: 'short', 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+      
+      if (!groups[date]) {
+        groups[date] = [];
+      }
+      groups[date].push(msg);
+    });
+    return groups;
+  };
+
+  const groupedMessages = groupMessagesByDate(messages);
+
   return (
     <div 
       ref={scrollRef}
@@ -125,21 +149,39 @@ const MessageList = ({ messages = [], currentUserId, isDarkMode, colors, loading
 
           {/* Messages container */}
           <div className="space-y-3">
-            {messages.map((message, index) => {
-              const showSender = index === 0 || messages[index - 1]?.senderId !== message.senderId;
-              
-              return (
-                <MessageBubble 
-                  key={message.id} 
-                  message={message} 
-                  isCurrentUser={message.isCurrentUser || message.senderId === currentUserId}
-                  isDarkMode={isDarkMode}
-                  colors={colors}
-                  showSender={showSender}
-                  enableAI={enableAI}
-                />
-              );
-            })}
+            {Object.entries(groupedMessages).map(([date, msgs]) => (
+              <React.Fragment key={date}>
+                {/* Date Separator Pill */}
+                <div className="flex justify-center my-6 sticky top-2 z-10 opacity-80 hover:opacity-100 transition-opacity">
+                  <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium px-3 py-1 rounded-full shadow-sm border border-gray-300 dark:border-gray-600 backdrop-blur-sm">
+                    {date === new Date().toLocaleDateString([], { 
+                      weekday: 'short', 
+                      year: 'numeric', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    }) ? 'Today' : date}
+                  </span>
+                </div>
+
+                {/* Render messages for this specific date */}
+                {msgs.map((message, index) => {
+                  // Show sender name if it's the first message of the group OR sender changed
+                  const showSender = index === 0 || msgs[index - 1]?.senderId !== message.senderId;
+                  
+                  return (
+                    <MessageBubble 
+                      key={message.id} 
+                      message={message} 
+                      isCurrentUser={message.isCurrentUser || message.senderId === currentUserId}
+                      isDarkMode={isDarkMode}
+                      colors={colors}
+                      showSender={showSender}
+                      enableAI={enableAI}
+                    />
+                  );
+                })}
+              </React.Fragment>
+            ))}
           </div>
 
           {/* Loading more messages indicator */}
