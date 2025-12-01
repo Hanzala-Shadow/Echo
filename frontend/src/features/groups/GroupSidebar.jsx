@@ -291,23 +291,25 @@ const GroupSidebar = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={(e) => openLeaveConfirm(group, e)}
-                  disabled={isLeaving}
-                  className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded ${isLeaving
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900'
-                    }`}
-                  title="Leave group"
-                >
-                  {isLeaving ? (
-                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  )}
-                </button>
+                {!isAdmin && (
+                  <button
+                    onClick={(e) => openLeaveConfirm(group, e)}
+                    disabled={isLeaving}
+                    className={`opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded ${isLeaving
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900'
+                      }`}
+                    title="Leave group"
+                  >
+                    {isLeaving ? (
+                      <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    )}
+                  </button>
+                )}
               </div>
             );
           })

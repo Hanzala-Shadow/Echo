@@ -922,14 +922,17 @@ const ChatContainer = () => {
                     </div>
                 )}
 
-                <button
-                  onClick={handleLeaveGroup}
-                  className="p-2 rounded-lg theme-text hover-scale"
-                  style={{ backgroundColor: colors.surface }}
-                  title="Leave group"
-                >
-                  🚪
-                </button>
+                {activeGroup.createdBy !== user?.userId && (
+                  <button
+                    onClick={handleLeaveGroup}
+                    className="p-2 rounded-lg theme-text hover-scale"
+                    style={{ backgroundColor: colors.surface }}
+                    title="Leave group"
+                  >
+                    🚪
+                  </button>
+                )}
+                
                 <button
                   onClick={() => {
                     setShowUserSidebar(!showUserSidebar);
