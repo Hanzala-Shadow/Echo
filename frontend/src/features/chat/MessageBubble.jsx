@@ -13,18 +13,24 @@ const MessageBubble = ({ message, isCurrentUser, isDarkMode, colors, enableAI })
   const [translatedText, setTranslatedText] = useState(null);
   const [isTranslating, setIsTranslating] = useState(false);
 
+  // ✅ UPDATED: Show actual time instead of relative time
   const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
     const now = new Date();
-    const messageTime = new Date(timestamp);
-    const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    const diffInDays = Math.floor(diffInHours / 24);
+    const isToday = date.toDateString() === now.toDateString();
 
-    if (diffInMinutes < 1) return 'now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m`;
-    if (diffInHours < 24) return `${diffInHours}h`;
-    if (diffInDays < 7) return `${diffInDays}d`;
-    return messageTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (isToday) {
+      // If today, just show time: "10:30 AM"
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else {
+      // If older, show date and time: "Oct 8, 10:30 AM"
+      return date.toLocaleString([], { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    }
   };
 
   // Handle translate

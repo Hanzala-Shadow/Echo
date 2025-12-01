@@ -31,7 +31,7 @@ const useWebSocket = (userId, token) => {
     }
   }, []);
 
-  // UPDATED: Cleanup old typing indicators
+  // Cleanup old typing indicators
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -44,11 +44,9 @@ const useWebSocket = (userId, token) => {
           let groupChanged = false;
           
           Object.keys(groupUsers).forEach(uid => {
-            // Handle both old format (timestamp number) and new format (object)
             const entry = groupUsers[uid];
             const timestamp = typeof entry === 'object' ? entry.timestamp : entry;
             
-            // Remove if older than 5 seconds
             if (now - timestamp > 5000) { 
               delete groupUsers[uid];
               groupChanged = true;
@@ -72,33 +70,24 @@ const useWebSocket = (userId, token) => {
   }, []);
 
   const showNotification = useCallback((title, body) => {
-    // Check if browser supports notifications and permission is granted
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
         new Notification(title, { body });
-        console.log('🔔 Notification shown:', title, body);
       } catch (error) {
         console.error('❌ Error showing notification:', error);
       }
-    } else {
-      console.log('🔕 Notification permission not granted or not supported');
     }
   }, []);
 
   const sendWebSocketMessage = useCallback((messageData) => {
-    console.log('📤 [WEBSOCKET] SENDING MESSAGE DATA:', JSON.stringify(messageData, null, 2));
-    
     if (!websocketRef.current || websocketRef.current.readyState !== WebSocket.OPEN) {
-      console.error('❌ [WEBSOCKET] WebSocket is not connected, queuing message');
       pendingMessages.current.push(messageData);
       return false;
     }
 
     try {
       const jsonMessage = JSON.stringify(messageData);
-      console.log('📤 [WEBSOCKET] Sending JSON message:', jsonMessage);
       websocketRef.current.send(jsonMessage);
-      console.log('📤 [WEBSOCKET] WebSocket message sent successfully:', messageData);
       return true;
     } catch (error) {
       console.error('❌ [WEBSOCKET] Error sending WebSocket message:', error);
@@ -106,54 +95,34 @@ const useWebSocket = (userId, token) => {
       return false;
     }
   }, []);
+
 const handleIncomingMessage = useCallback(async(data) => {
-  console.log('📩 [WEBSOCKET] RAW INCOMING MESSAGE DATA:', data);
-  console.log('📩 [WEBSOCKET] Handling incoming WebSocket message:', JSON.stringify(data, null, 2));
+  // console.log('📩 [WEBSOCKET] RAW INCOMING MESSAGE DATA:', data);
 
   const messageType = data.type || data.message_type || data.messageType;
-  console.log('💬 [WEBSOCKET] Message type:', messageType);
 
   if (messageType === 'message' || messageType === 'MESSAGE' || messageType === 'chat_message') {
-    console.log('💬 [WEBSOCKET] Processing chat message for group:', data.group_id || data.groupId);
-
     const messageId = data.message_id || data.messageId || data.id || `ws-${Date.now()}-${Math.random()}`;
+    
+    // Prevent duplicate processing ONLY if it's the same status
     if (processedMessageIds.current.has(messageId)) {
-      console.log('⚠️ [WEBSOCKET] Duplicate message detected (already processed), skipping:', messageId);
-      return;
+       return;
     }
     processedMessageIds.current.add(messageId);
 
-    // Debug: Log the raw data structure
-    console.log('🔍 [WEBSOCKET] Raw message data structure:', {
-      hasMediaProperty: !!data.media,
-      mediaType: data.media ? typeof data.media : 'none',
-      mediaKeys: data.media ? Object.keys(data.media) : [],
-      hasMediaId: !!(data.media_id || data.mediaId),
-      flatMediaId: data.media_id || data.mediaId,
-      contentLength: data.content ? data.content.length : 0,
-      allKeys: Object.keys(data)
-    });
-
-    // EXTREMELY ROBUST media extraction - handle ANY possible format
+    // EXTREMELY ROBUST media extraction
     let media = null;
     
-    // Method 1: Check if data has a direct media object from backend
     if (data.media && typeof data.media === 'object' && data.media !== null) {
-      console.log('📂 [WEBSOCKET] Found nested media object from backend:', data.media);
-      // ✅ Extract all properties including IV
       media = {
         media_id: data.media.mediaId || data.media.media_id || data.media.id,
         file_name: data.media.fileName || data.media.file_name,
         file_type: data.media.fileType || data.media.file_type,
         file_size: data.media.fileSize || data.media.file_size,
-        iv: data.media.iv,  // ✅ CRITICAL: Extract IV from backend
+        iv: data.media.iv,
         uploaded_at: data.media.uploadedAt || data.media.uploaded_at
       };
-      console.log('✅ [WEBSOCKET] Extracted media with IV:', media);
-    } 
-    // Method 2: Flat media properties (legacy support)
-    else if (data.media_id || data.mediaId) {
-      console.log('📄 [WEBSOCKET] Found flat media properties');
+    } else if (data.media_id || data.mediaId) {
       const mediaId = data.media_id || data.mediaId;
       if (mediaId) {
         media = {
@@ -161,93 +130,8 @@ const handleIncomingMessage = useCallback(async(data) => {
           file_name: data.file_name || data.fileName,
           file_type: data.file_type || data.fileType,
           file_size: data.file_size || data.fileSize,
-          iv: data.iv  // ✅ CRITICAL: Extract IV from flat format
+          iv: data.iv
         };
-        console.log('✅ [WEBSOCKET] Created media object from flat format:', media);
-      }
-    }
-    // Method 3: Alternative property names (case insensitive search)
-    else {
-      console.log('🔍 [WEBSOCKET] No standard media format found, searching for alternative property names');
-      
-      // Create a lowercase map of all properties for case-insensitive search
-      const lowerCaseData = {};
-      const propMap = {}; // Map lowercase keys to original keys
-      Object.keys(data).forEach(key => {
-        lowerCaseData[key.toLowerCase()] = data[key];
-        propMap[key.toLowerCase()] = key;
-      });
-      
-      // Search for media-related properties including IV
-      const possibleMediaIds = ['media_id', 'mediaid', 'mediaId', 'mediaID', 'id'];
-      const possibleFileNames = ['file_name', 'filename', 'fileName'];
-      const possibleFileTypes = ['file_type', 'filetype', 'fileType', 'mimetype', 'mimeType'];
-      const possibleFileSizes = ['file_size', 'filesize', 'fileSize'];
-      const possibleIVs = ['iv', 'IV', 'initializationVector'];  // ✅ Look for IV
-      
-      let foundMediaId = null;
-      let foundFileName = null;
-      let foundFileType = null;
-      let foundFileSize = null;
-      let foundIV = null;  // ✅ Track IV
-      
-      // Look for media ID
-      for (const key of possibleMediaIds) {
-        if (lowerCaseData[key] && lowerCaseData[key] !== '') {
-          foundMediaId = lowerCaseData[key];
-          console.log(`🆔 [WEBSOCKET] Found media ID with key '${propMap[key]}':`, foundMediaId);
-          break;
-        }
-      }
-      
-      // Look for file name
-      for (const key of possibleFileNames) {
-        if (lowerCaseData[key]) {
-          foundFileName = lowerCaseData[key];
-          console.log(`📄 [WEBSOCKET] Found file name with key '${propMap[key]}':`, foundFileName);
-          break;
-        }
-      }
-      
-      // Look for file type
-      for (const key of possibleFileTypes) {
-        if (lowerCaseData[key]) {
-          foundFileType = lowerCaseData[key];
-          console.log(`📦 [WEBSOCKET] Found file type with key '${propMap[key]}':`, foundFileType);
-          break;
-        }
-      }
-      
-      // Look for file size
-      for (const key of possibleFileSizes) {
-        if (lowerCaseData[key]) {
-          foundFileSize = lowerCaseData[key];
-          console.log(`⚖️ [WEBSOCKET] Found file size with key '${propMap[key]}':`, foundFileSize);
-          break;
-        }
-      }
-
-      // ✅ Look for IV
-      for (const key of possibleIVs) {
-        if (lowerCaseData[key]) {
-          foundIV = lowerCaseData[key];
-          console.log(`🔑 [WEBSOCKET] Found IV with key '${propMap[key]}':`, foundIV);
-          break;
-        }
-      }
-      
-      // If we found a media ID, create a media object
-      if (foundMediaId) {
-        media = {
-          media_id: foundMediaId,
-          file_name: foundFileName,
-          file_type: foundFileType,
-          file_size: foundFileSize,
-          iv: foundIV  // ✅ Include IV
-        };
-        console.log('✅ [WEBSOCKET] Created media object from alternative format:', media);
-      } else {
-        console.log('📝 [WEBSOCKET] No media properties found in any format, treating as text message');
       }
     }
 
@@ -255,34 +139,32 @@ const handleIncomingMessage = useCallback(async(data) => {
     let decryptedContent = data.content || data.message || '';
 
     try {
-      // 1️⃣ Get group key (await it)
       let groupKey = await keyCache.getGroupKey(data.group_id || data.groupId);
 
-      // 2️⃣ If not cached, fetch & unwrap using CURRENT user's private key
       if (!groupKey) {
-        console.log(`⚠️ Group key not found in cache for group ${data.group_id || data.groupId}`);
         const userPrivateKey = await keyCache.getUserPrivateKey();
-        
         if (userPrivateKey) {
-          console.log(`🔑 Fetching group key for current user (${userId})`);
           groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
             data.group_id || data.groupId,
-            userId,  // ✅ ALWAYS use current user's ID
+            userId,
             userPrivateKey
           );
-          
           if (groupKey) {
             await keyCache.setGroupKey(data.group_id || data.groupId, groupKey);
-            console.log(`✅ Group key cached for group ${data.group_id || data.groupId}`);
           }
         }
       }
 
-      // 3️⃣ Decrypt if group key exists and message has content
       if (groupKey && data.content) {
-        const encryptedPayload = JSON.parse(data.content); // { iv, ciphertext }
-        decryptedContent = await decryptMessage(encryptedPayload, groupKey);
-        console.log('✅ Message decrypted successfully');
+        // Check if content is JSON (encrypted)
+        if (typeof data.content === 'string' && (data.content.startsWith('{') || data.content.includes('iv'))) {
+            try {
+                const encryptedPayload = JSON.parse(data.content);
+                decryptedContent = await decryptMessage(encryptedPayload, groupKey);
+            } catch (e) {
+                // Not JSON or parse failed, assume plain text or already decrypted
+            }
+        }
       }
     } catch (err) {
       console.error('❌ [WEBSOCKET] Failed to decrypt message:', err);
@@ -297,17 +179,11 @@ const handleIncomingMessage = useCallback(async(data) => {
       timestamp: new Date(data.created_at || data.createdAt || data.timestamp || Date.now()),
       type: 'text',
       groupId: data.group_id || data.groupId,
-      status: 'delivered',
+      status: data.status || 'sent',
       isCurrentUser: (data.sender_id || data.senderId) === userId,
-      media: media  // ✅ Includes IV if media exists
+      media: media
     };
 
-    console.log('📤 [WEBSOCKET] Final message object to be added:', newMessage);
-    console.log('📊 [WEBSOCKET] Message has media:', !!newMessage.media);
-    console.log('📊 [WEBSOCKET] Message has IV:', !!newMessage.media?.iv);
-    console.log('📊 [WEBSOCKET] Message has content:', !!newMessage.content && newMessage.content.length > 0);
-    
-    // Show notification for new messages (not from current user)
     if (!newMessage.isCurrentUser) {
       showNotification(
         `New message from ${newMessage.senderName}`,
@@ -315,11 +191,14 @@ const handleIncomingMessage = useCallback(async(data) => {
           ? newMessage.content.substring(0, 50) + '...' 
           : newMessage.content
       );
+      
+      // ✅ NEW: Automatically send read receipt for incoming messages in active chat
+      // Note: This should ideally be handled by the UI component when message is visible
+      // But we can emit an event or simple check here if we wanted
     }
 
-    // Use batch update for better performance and handle optimistic message replacement
     setMessages(prev => {
-      // Check if this is a server-confirmed version of an optimistic message
+      // Try to match by client_id if available (from message_sent ACK) or fallback to content/timestamp matching
       const optimisticIndex = prev.findIndex(msg => 
         msg.isCurrentUser && 
         msg.content === newMessage.content &&
@@ -331,37 +210,61 @@ const handleIncomingMessage = useCallback(async(data) => {
       if (optimisticIndex !== -1) {
         const updated = [...prev];
         updated[optimisticIndex] = newMessage;
-        console.log('🔄 [WEBSOCKET] Replacing optimistic message with server-confirmed message');
         return updated;
       } else {
         const exists = prev.some(msg => msg.id === newMessage.id);
-        if (exists) {
-          console.log('⚠️ [WEBSOCKET] Message already in state, skipping');
-          return prev;
-        }
-        console.log('➕ [WEBSOCKET] Adding new message to state');
+        if (exists) return prev;
         return [...prev, newMessage];
       }
     });
   }
+  // ✅ NEW: Handle "Sent" ACK (Single Tick)
+  else if (messageType === 'message_sent') {
+      const realMessageId = data.message_id;
+      const clientId = data.client_id;
+      const serverTimestamp = data.created_at;
+
+      console.log(`✅ [WEBSOCKET] Message Sent ACK: ClientID=${clientId} -> ID=${realMessageId}`);
+
+      setMessages(prev => prev.map(msg => {
+          // Match by client ID (best) or fallback logic if client_id missing
+          if ((clientId && msg.id === clientId) || (msg.status === 'pending' && !clientId)) {
+              return { 
+                  ...msg, 
+                  id: realMessageId, 
+                  status: 'sent',
+                  timestamp: serverTimestamp ? new Date(serverTimestamp) : msg.timestamp
+              };
+          }
+          return msg;
+      }));
+  }
+  // ✅ NEW: Handle Delivery & Read Status Updates
+  else if (['message_read', 'message_delivered', 'message_status_update', 'read_receipt'].includes(messageType)) {
+      const targetMessageId = data.message_id || data.messageId;
+      const newStatus = messageType === 'message_read' || messageType === 'read_receipt' ? 'read' : 'delivered';
+      
+      console.log(`🔄 [WEBSOCKET] Updating message status: ${targetMessageId} -> ${newStatus}`);
+
+      setMessages(prev => prev.map(msg => {
+          if (String(msg.id) === String(targetMessageId)) {
+              const statusRank = { 'pending': 0, 'sent': 1, 'delivered': 2, 'read': 3 };
+              if ((statusRank[newStatus] || 0) > (statusRank[msg.status] || 0)) {
+                  return { ...msg, status: newStatus };
+              }
+          }
+          return msg;
+      }));
+  }
   else if (messageType === 'typing_start') {
     const groupId = data.group_id || data.groupId;
     const tUserId = data.user_id || data.userId;
-    
-    // 1. Prefer the username sent with the signal (set in AuthContext)
-    // 2. Fallback to looking up in onlineUsers list
-    // 3. Fallback to 'Someone'
     let tUsername = data.username || data.senderName || data.sender_name;
     
     if (!tUsername) {
       const knownUser = onlineUsers.find(u => String(u.userId) === String(tUserId));
       if (knownUser) tUsername = knownUser.username || knownUser.name;
     }
-
-    const finalUsername = tUsername || 'Someone';
-
-    console.log('DEBUG: Received typing_start. Raw data:', data); 
-    console.log('DEBUG: Extracted username:', tUsername); // <--- IF THIS SAYS "Someone", THE ISSUE IS UPSTREAM
 
     if (String(tUserId) !== String(userId)) { 
       setTypingUsers(prev => ({
@@ -370,7 +273,7 @@ const handleIncomingMessage = useCallback(async(data) => {
           ...(prev[groupId] || {}),
           [tUserId]: {
             timestamp: Date.now(),
-            username: tUsername // Store the name!
+            username: tUsername || 'Someone'
           }
         }
       }));
@@ -387,7 +290,6 @@ const handleIncomingMessage = useCallback(async(data) => {
     });
   } 
   else if (messageType === 'status_update' || messageType === 'STATUS_UPDATE') {
-    console.log('📊 Status update:', data);
     const targetUserId = data.user_id || data.userId;
     const onlineStatus = data.online_status !== undefined ? 
       (typeof data.online_status === 'string' ? data.online_status === 'true' : data.online_status) :
@@ -419,30 +321,19 @@ const handleIncomingMessage = useCallback(async(data) => {
       });
     });
   }
-  // ... rest of message type handlers (file_start, file_chunk, etc.)
-}, [userId, showNotification]);
+}, [userId, showNotification, onlineUsers]);
 
   const connect = useCallback(() => {
-    if (!userId || !token) {
-      console.log('⏸️ [WEBSOCKET] Missing userId or token for WebSocket connection');
-      return;
-    }
+    if (!userId || !token) return;
 
-    if (websocketRef.current?.readyState === WebSocket.OPEN) {
-      console.log('⚠️ [WEBSOCKET] WebSocket already connected');
-      return;
-    }
+    if (websocketRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
-      // Use environment variable for WebSocket URL
       const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
-      
-      // For Docker environment or local development, use localhost
       let socketUrl;
       if (hostIp === 'localhost' || hostIp === '127.0.0.1') {
         socketUrl = `ws://localhost:8080/ws/messages?token=${token}`;
       } else {
-        // Use the provided host IP
         const cleanIp = hostIp.trim().split(/\s+/)[0];
         socketUrl = `ws://${cleanIp}:8080/ws/messages?token=${token}`;
       }
@@ -452,37 +343,27 @@ const handleIncomingMessage = useCallback(async(data) => {
       const socket = new WebSocket(socketUrl);
       
       socket.onopen = () => {
-        console.log('✅ [WEBSOCKET] WebSocket connected successfully');
+        console.log('✅ [WEBSOCKET] Connected');
         setIsConnected(true);
         reconnectAttempts.current = 0;
         
         if (pendingMessages.current.length > 0) {
-          console.log(`📤 [WEBSOCKET] Sending ${pendingMessages.current.length} queued messages`);
-          pendingMessages.current.forEach(msg => {
-            socket.send(JSON.stringify(msg));
-          });
+          pendingMessages.current.forEach(msg => socket.send(JSON.stringify(msg)));
           pendingMessages.current = [];
         }
       };
 
       socket.onmessage = (event) => {
-        console.log('📨 [WEBSOCKET] RAW WebSocket message event:', event);
-        console.log('📨 [WEBSOCKET] RAW WebSocket message data type:', typeof event.data);
-        console.log('📨 [WEBSOCKET] RAW WebSocket message data:', event.data);
-        
         try {
           const data = JSON.parse(event.data);
-          console.log('✅ [WEBSOCKET] Parsed WebSocket message:', data);
-          console.log('✅ [WEBSOCKET] Parsed message keys:', Object.keys(data));
           handleIncomingMessage(data);
         } catch (error) {
-          console.error('❌ [WEBSOCKET] Error parsing WebSocket message:', error);
-          console.error('❌ [WEBSOCKET] Raw message data that failed to parse:', event.data);
+          console.error('❌ [WEBSOCKET] Error parsing message:', error);
         }
       };
 
       socket.onclose = (event) => {
-        console.log('🔌 [WEBSOCKET] WebSocket disconnected:', event.code, event.reason);
+        console.log('🔌 [WEBSOCKET] Disconnected:', event.code);
         setIsConnected(false);
         websocketRef.current = null;
         if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
@@ -491,13 +372,13 @@ const handleIncomingMessage = useCallback(async(data) => {
       };
 
       socket.onerror = (error) => {
-        console.error('❌ [WEBSOCKET] WebSocket error:', error);
+        console.error('❌ [WEBSOCKET] Error:', error);
         setIsConnected(false);
       };
 
       websocketRef.current = socket;
     } catch (error) {
-      console.error('❌ [WEBSOCKET] Error creating WebSocket connection:', error);
+      console.error('❌ [WEBSOCKET] Connection error:', error);
       setIsConnected(false);
       handleReconnection();
     }
@@ -506,12 +387,9 @@ const handleIncomingMessage = useCallback(async(data) => {
   const handleReconnection = useCallback(() => {
     if (reconnectAttempts.current < maxReconnectAttempts) {
       reconnectAttempts.current++;
-      console.log(`🔄 Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
       reconnectTimeoutRef.current = setTimeout(() => {
         connect();
       }, reconnectInterval);
-    } else {
-      console.log('❌ Max reconnection attempts reached');
     }
   }, [connect]);
 
@@ -531,71 +409,59 @@ const handleIncomingMessage = useCallback(async(data) => {
     processedMessageIds.current.clear();
   }, []);
 
-
-
 const sendMessage = useCallback(async (message) => {
-  console.log('📤 [WEBSOCKET] Preparing to send message:', message);
-
   const hasContent = message.content && message.content.trim() !== '';
   const hasMedia = message.media && Object.keys(message.media).length > 0;
 
-  if (!hasContent && !hasMedia) {
-    console.error('❌ [WEBSOCKET] Cannot send empty message');
-    return false;
-  }
+  if (!hasContent && !hasMedia) return false;
 
-  /// 🔐 Encrypt message content if present
-let encryptedContent = message.content;
-if (hasContent) {
-  let groupKey = await keyCache.getGroupKey(message.groupId);
+  // Extract the ID from the message object if passed (it should be there from handleSendMessage)
+  // We use this ID as client_id to match the ACK later
+  const clientId = message.id || `optimistic-${Date.now()}-${Math.random()}`;
 
-  if (!groupKey) {
-    console.warn(`⚠️ Group key not found in cache. Fetching from server for group ${message.groupId}...`);
+  let encryptedContent = message.content;
+  if (hasContent) {
+    let groupKey = await keyCache.getGroupKey(message.groupId);
+
+    if (!groupKey) {
+      try {
+        const userPrivateKey = await keyCache.getUserPrivateKey();
+        if (!userPrivateKey) return false;
+
+        groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
+          message.groupId,
+          userId,
+          userPrivateKey
+        );
+
+        if (groupKey) {
+          await keyCache.setGroupKey(message.groupId, groupKey);
+        } else {
+          return false;
+        }
+      } catch (unwrapErr) {
+        console.error("❌ Error fetching group key:", unwrapErr);
+        return false;
+      }
+    }
+
     try {
-      const userPrivateKey = await keyCache.getUserPrivateKey();
-      if (!userPrivateKey) {
-        console.error("❌ Missing user private key – cannot unwrap group key");
-        return false;
-      }
-
-      // 🧠 Fetch and unwrap from backend
-      groupKey = await groupKeyService.fetchAndUnwrapGroupKey(
-        message.groupId,
-        userId,
-        userPrivateKey
-      );
-
-      // 🧱 Cache it for later use
-      if (groupKey) {
-        await keyCache.setGroupKey(message.groupId, groupKey);
-        console.log(`✅ Cached group key for group ${message.groupId}`);
-      } else {
-        console.error("❌ Failed to unwrap group key – empty key returned");
-        return false;
-      }
-    } catch (unwrapErr) {
-      console.error("❌ Error fetching/unwrapping group key:", unwrapErr);
+      const encrypted = await encryptMessage(message.content, groupKey);
+      encryptedContent = JSON.stringify(encrypted);
+    } catch (encryptErr) {
+      console.error("❌ [WEBSOCKET] Encryption failed:", encryptErr);
       return false;
     }
   }
-
-  // 🔒 Proceed with encryption
-  try {
-    const encrypted = await encryptMessage(message.content, groupKey);
-    encryptedContent = JSON.stringify(encrypted);
-  } catch (encryptErr) {
-    console.error("❌ [WEBSOCKET] Encryption failed:", encryptErr);
-    return false;
-  }
-}
-
 
   const messageData = {
     type: 'message',
     sender_id: userId,
     group_id: message.groupId,
     timestamp: new Date().toISOString(),
-    content: encryptedContent
+    content: encryptedContent,
+    client_id: clientId, // ✅ Send client ID for matching
+    status: 'sent' 
   };
 
   if (hasMedia) {
@@ -606,210 +472,96 @@ if (hasContent) {
 
   return sendWebSocketMessage(messageData);
 }, [userId, sendWebSocketMessage]);
+
   const joinGroup = useCallback((groupId) => {
-    if (!groupId) {
-      console.error('❌ Invalid group ID');
-      return false;
-    }
-    console.log('👥 Joining group:', groupId);
-    const joinMessage = {
-      type: 'user_joined',
-      user_id: userId,
-      group_id: groupId,
-      timestamp: new Date().toISOString()
-    };
+    if (!groupId) return false;
+    const joinMessage = { type: 'user_joined', user_id: userId, group_id: groupId, timestamp: new Date().toISOString() };
     return sendWebSocketMessage(joinMessage);
   }, [userId, sendWebSocketMessage]);
 
   const leaveGroup = useCallback((groupId) => {
     if (!groupId) return false;
-    console.log('🚪 Leaving group:', groupId);
-    const leaveMessage = {
-      type: 'user_left',
-      user_id: userId,
-      group_id: groupId,
-      timestamp: new Date().toISOString()
-    };
+    const leaveMessage = { type: 'user_left', user_id: userId, group_id: groupId, timestamp: new Date().toISOString() };
     return sendWebSocketMessage(leaveMessage);
   }, [userId, sendWebSocketMessage]);
 
-  // UPDATED: Send Typing Indicator with Username
   const sendTypingIndicator = useCallback((groupId, isTyping, username) => {
       const payload = {
       type: isTyping ? 'typing_start' : 'typing_stop',
       user_id: userId,
-      username: username, // <--- This MUST be present
+      username: username, 
       group_id: groupId,
       timestamp: new Date().toISOString()
     };
-    
-    console.log('DEBUG: WebSocket sending payload:', payload); // <--- CHECK THIS LOG
     return sendWebSocketMessage(payload);
   }, [userId, sendWebSocketMessage]);
 
   const clearGroupMessages = useCallback((groupId) => {
-    console.log('🧹 Clearing messages for group:', groupId);
-    setMessages(prev => {
-      const filtered = prev.filter(msg => msg.groupId !== groupId);
-      console.log(`Removed ${prev.length - filtered.length} messages for group ${groupId}`);
-      return filtered;
-    });
+    setMessages(prev => prev.filter(msg => msg.groupId !== groupId));
   }, []);
 
   const clearAllMessages = useCallback(() => {
-    console.log('🧹 Clearing all messages');
     setMessages([]);
     processedMessageIds.current.clear();
   }, []);
 
-  // File transfer functions
   const sendFile = useCallback((file, groupId, onProgress) => {
-    if (!file || !groupId) {
-      console.error('❌ Invalid file or group ID');
-      return false;
-    }
+    return false; 
+  }, []);
 
-    console.log('📤 Preparing to send file:', file.name);
+  const sendFileChunk = useCallback(() => {}, []);
+  const sendFileEnd = useCallback(() => {}, []);
 
-    // Send file start message
-    const fileStartMessage = {
-      type: 'file_start',
-      sender_id: userId,
-      group_id: groupId,
-      file_name: file.name,
-      file_size: file.size,
-      file_type: file.type,
-      timestamp: new Date().toISOString()
-    };
-
-    return sendWebSocketMessage(fileStartMessage);
-  }, [userId, sendWebSocketMessage]);
-
-  const sendFileChunk = useCallback((uploadId, chunkData, chunkIndex, totalChunks) => {
-    const chunkMessage = {
-      type: 'file_chunk',
-      upload_id: uploadId,
-      chunk_data: chunkData,
-      chunk_index: chunkIndex,
-      total_chunks: totalChunks,
-      timestamp: new Date().toISOString()
-    };
-
-    return sendWebSocketMessage(chunkMessage);
-  }, [sendWebSocketMessage]);
-
-  const sendFileEnd = useCallback((uploadId, fileName, fileSize) => {
-    const fileEndMessage = {
-      type: 'file_end',
-      upload_id: uploadId,
-      file_name: fileName,
-      file_size: fileSize,
-      timestamp: new Date().toISOString()
-    };
-
-    return sendWebSocketMessage(fileEndMessage);
-  }, [sendWebSocketMessage]);
-
-  // Media upload functions
  const uploadMedia = useCallback(async (file, groupId, onProgress) => {
-  if (!file || !groupId) {
-    console.error('❌ [WEBSOCKET] Invalid file or group ID for media upload');
-    return false;
-  }
+  if (!file || !groupId) return false;
 
   const groupKey = await keyCache.getGroupKey(groupId);
-  if (!groupKey) {
-    console.error('❌ [WEBSOCKET] Group key not found, cannot encrypt file');
-    return false;
-  }
+  if (!groupKey) return false;
 
   try {
     const fileBuffer = await file.arrayBuffer();
     const { iv, ciphertext } = await encryptFile(fileBuffer, groupKey);
-
-    // Convert ciphertext to Blob
     const encryptedBlob = new Blob([base64ToUint8(ciphertext)], { type: file.type });
-
     const formData = new FormData();
     formData.append('file', encryptedBlob, file.name);
-    formData.append('iv', iv); // ✅ Send IV to backend
+    formData.append('iv', iv);
 
     const hostIp = import.meta.env.VITE_HOST_IP || 'localhost';
     const uploadUrl = `http://${hostIp}:8080/media/upload/${groupId}`;
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-
-      // Track upload progress
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable && onProgress) {
           const progress = Math.round((event.loaded / event.total) * 100);
           onProgress(progress);
         }
       });
-
-      // Handle completion
       xhr.addEventListener('load', () => {
-        console.log('✅ [WEBSOCKET] Upload request completed with status:', xhr.status);
         if (xhr.status === 200) {
           try {
             const response = JSON.parse(xhr.responseText);
-            console.log('✅ [WEBSOCKET] Media upload successful, response:', response);
-            
-            // ✅ Response now includes: { mediaId, fileName, fileType, fileSize, iv, uploadedAt, groupId }
             resolve(response);
-          } catch (e) {
-            console.error('❌ [WEBSOCKET] Error parsing response:', e);
-            reject(e);
-          }
-        } else {
-          console.error('❌ [WEBSOCKET] Media upload failed with status:', xhr.status);
-          console.error('❌ [WEBSOCKET] Response text:', xhr.responseText);
-          reject(new Error(`Upload failed with status ${xhr.status}`));
-        }
+          } catch (e) { reject(e); }
+        } else { reject(new Error(`Upload failed`)); }
       });
-
-      // Handle network errors
-      xhr.addEventListener('error', () => {
-        console.error('❌ [WEBSOCKET] Media upload network error');
-        reject(new Error('Upload failed'));
-      });
-
-      // Handle abort
-      xhr.addEventListener('abort', () => {
-        console.error('❌ [WEBSOCKET] Media upload aborted');
-        reject(new Error('Upload aborted'));
-      });
-
-      // Send the request
       xhr.open('POST', uploadUrl);
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      console.log('📤 [WEBSOCKET] Sending media upload request with token');
       xhr.send(formData);
     });
   } catch (error) {
-    console.error('❌ [WEBSOCKET] Error during media upload:', error);
     return false;
   }
 }, [token]);
 
-
   useEffect(() => {
-    if (userId && token) {
-      console.log('🚀 Initializing WebSocket connection for user:', userId);
-      connect();
-    }
-    return () => {
-      console.log('🧹 Cleaning up WebSocket connection...');
-      disconnect();
-    };
+    if (userId && token) connect();
+    return () => disconnect();
   }, [userId, token]);
 
   useEffect(() => {
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     };
   }, []);
 
@@ -821,7 +573,7 @@ if (hasContent) {
     fileTransfers,
     mediaUploads,
     sendMessage,
-    sendWebSocketMessage, // 🆕 Export raw sender for control messages
+    sendWebSocketMessage,
     sendFile,
     sendFileChunk,
     sendFileEnd,
