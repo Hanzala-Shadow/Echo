@@ -18,10 +18,24 @@ class EnhancedDeadlineExtractor:
         # Define comprehensive regex patterns for various date formats with named groups
         self.date_patterns = [
             # Common deadline abbreviations (must be first to avoid conflicts)
-            (r'\b(EOD|COB|EOW|ASAP|end of day|as soon as possible|end of month|close of business|dopahar|midnight|afternoon)\b', 'deadline_abbreviations'),
+            (r'\b(EOD|COB|EOW|ASAP|end of day|as soon as possible|end of month|close of business|dopahar|midnight|afternoon|tonight|evening|morning|subah|shaam|subah|dopahar tak)\b', 'deadline_abbreviations'),
             
-            # By + time expressions (more specific to avoid conflicts with abbreviations)
-            (r'\b(by)\s+(?P<time_expr>(?:(?!\b(?:EOD|COB|EOW|ASAP|end of day|as soon as possible|end of month|close of business|dopahar|midnight|afternoon)\b)[^\s$.,;!?])+)(?=\s|$|[.,;!?])', 'by_time_en'),
+            # Combined date-time patterns (MUST come before individual patterns to avoid splitting)
+            (r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(?:at\s+)?(?P<hour>[0-1]?[0-9]|2[0-3]):?(?P<minute>[0-5][0-9])?\s*(?P<period>AM|PM|am|pm|baje)?\b', 'day_time_combined'),
+            (r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(?:at\s+)?(?P<hour>[0-1]?[0-9]|2[0-3])\s*(?P<period>AM|PM|am|pm|baje)\b', 'day_time_ampm'),
+            
+            # Tomorrow/today with time
+            (r'\b(tomorrow|today|kal|aaj)\s+(?:at\s+)?(?P<hour>[0-1]?[0-9]|2[0-3]):?(?P<minute>[0-5][0-9])?\s*(?P<period>AM|PM|am|pm|baje)?\b', 'relative_time_combined'),
+            (r'\b(tomorrow|today|kal|aaj)\s+(?:at\s+)?(?P<hour>[0-1]?[0-9]|2[0-3])\s*(?P<period>AM|PM|am|pm|baje)\b', 'relative_time_ampm'),
+            
+            # By + context expressions (handle "by tonight", "by evening", etc.)
+            (r'\b(by|till|until|tak)\s+(tonight|evening|morning|afternoon|midnight|EOD|COB|end of day|shaam|subah|dopahar|raat)\b', 'by_context_time'),
+            
+            # Month name with day and time
+            (r'\b(?P<month_name>January|February|March|April|May|June|July|August|September|October|November|December)\s+(?P<day>0?[1-9]|[12]\d|3[01])(st|nd|rd|th)?,?\s*(?P<year>\d{4})?\s+(?:at\s+)?(?P<hour>[0-1]?[0-9]|2[0-3]):?(?P<minute>[0-5][0-9])?\s*(?P<period>AM|PM|am|pm)?\b', 'month_day_time'),
+            
+            # By + time expressions
+            (r'\b(by|till|until|tak)\s+(?P<time_expr>(?:(?!\b(?:EOD|COB|EOW|ASAP|end of day|as soon as possible|end of month|close of business|dopahar|midnight|afternoon)\b)[^\s$.,;!?])+)(?=\s|$|[.,;!?])', 'by_time_en'),
             
             # Standard formats
             (r'\b(?P<month>0?[1-9]|1[0-2])[\/\-](?P<day>0?[1-9]|[12]\d|3[01])[\/\-](?P<year>\d{4})\b', 'mm/dd/yyyy'),
@@ -35,65 +49,28 @@ class EnhancedDeadlineExtractor:
             (r'\b(?P<month_name>January|February|March|April|May|June|July|August|September|October|November|December)\s+(?P<day>0?[1-9]|[12]\d|3[01])(st|nd|rd|th)?\b', 'month_name_day'),
             (r'\b(?P<day>0?[1-9]|[12]\d|3[01])(st|nd|rd|th)?\s+(?P<month_name>January|February|March|April|May|June|July|August|September|October|November|December)\b', 'day_month_name'),
             
-            # Time expressions
-            (r'\b(?P<hour>[0-1]?[0-9]|2[0-3]):(?P<minute>[0-5][0-9])\s*(?P<period>AM|PM|am|pm)?\b', 'time_12_24'),
-            (r'\b(?P<hour>[0-1]?[0-9]|2[0-3])\s*(?P<period>AM|PM|am|pm)\b', 'time_ampm'),
-            
-            # Time expressions with context
-            (r'\b(?P<hour>[0-1]?[0-9]|2[0-3]):(?P<minute>[0-5][0-9])\s*(?P<period>AM|PM|am|pm)?\s*(?P<time_context>by|until|till)\b', 'time_by_en'),
-            (r'\b(?P<time_context>by|until|till)\s*(?P<hour>[0-1]?[0-9]|2[0-3]):(?P<minute>[0-5][0-9])\s*(?P<period>AM|PM|am|pm)?\b', 'by_time_en'),
-            
-            # Time expressions with AM/PM
-            (r'\b(?P<hour>[0-1]?[0-9]|2[0-3])\s*(?P<period>AM|PM|am|pm)\b', 'time_ampm_simple'),
-            
-            # Simple time expressions
-            (r'\b(?P<time_context>by|at|until)\s+(?P<hour>[0-1]?[0-9]|2[0-3])\s*(?P<period>AM|PM|am|pm)\b', 'time_context_simple'),
+            # Time expressions (ONLY standalone, after combined patterns)
+            (r'(?<!\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|tomorrow|today|kal|aaj)\s)(?<!\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,?\s*(?:\d{4}\s+)?)\b(?P<hour>[0-1]?[0-9]|2[0-3]):(?P<minute>[0-5][0-9])\s*(?P<period>AM|PM|am|pm)?\b', 'time_12_24'),
+            (r'(?<!\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|tomorrow|today|kal|aaj)\s)(?<!\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,?\s*(?:\d{4}\s+)?)\b(?P<hour>[0-1]?[0-9]|2[0-3])\s*(?P<period>AM|PM|am|pm)\b', 'time_ampm'),
             
             # Relative dates in English
             (r'\b(tomorrow|today|yesterday)\b', 'relative_en'),
             (r'\b(day after tomorrow|day before yesterday)\b', 'relative_en_extended'),
             
-            # Days of the week
-            (r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 'day_of_week_en'),
+            # Days of the week (ONLY standalone)
+            (r'(?<!by\s)(?<!till\s)(?<!until\s)(?<!next\s)(?<!last\s)(?<!this\s)\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b(?!\s+(?:\d{1,2}|at))', 'day_of_week_en'),
             
             # Next/Last + day in English
-            (r'\b(next|last|this)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 'next_last_day_en'),
-            (r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*(next|last)\b', 'day_next_last_en'),
+            (r'\b(next|last|this)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b(?!\s+(?:\d{1,2}|at))', 'next_last_day_en'),
             
             # Next/This + week/month/year in English
             (r'\b(next|this|last)\s+(week|month|year)\b', 'next_this_last_en'),
-            (r'\b(week|month|year)\s+(next|last)\b', 'period_next_last_en'),
             
             # In + time period in English
-            (r'\b(in)\s+(?P<amount>\d+\.?\d*)\s*(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'in_period_en_float'),
-            (r'\b(in)\s+(?P<amount>\d+\s+)?(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'in_period_en'),
-            (r'\b(within)\s+(?P<amount>\d+\.?\d*)\s*(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'within_period_en_float'),
-            (r'\b(within)\s+(?P<amount>\d+\s+)?(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'within_period_en'),
-            
-            # Text-based time periods (e.g., "within two weeks")
-            (r'\b(within)\s+(?P<text_amount>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s*(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'within_text_period_en'),
-            (r'\b(in)\s+(?P<text_amount>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s*(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'in_text_period_en'),
-            
-            # By + time expressions (more specific to avoid conflicts with abbreviations)
-            (r'\b(by)\s+(?P<time_expr>(?:(?!\b(?:EOD|COB|EOW|ASAP|end of day|as soon as possible|end of month|close of business|dopahar|midnight|afternoon)\b)[^\s$.,;!?])+)(?=\s|$|[.,;!?])', 'by_time_en'),
-            
-            # Numeric-only dates (context-dependent)
-            (r'\b(?P<day>0?[1-9]|[12]\d|3[01])\s*(?:st|nd|rd|th)?\s+(?P<month>0?[1-9]|1[0-2])\b', 'day_month_numeric'),
-            (r'\b(?P<month>0?[1-9]|1[0-2])\s*[\/\-]?\s*(?P<day>0?[1-9]|[12]\d|3[01])\b', 'month_day_numeric'),
-            
-            # Year-only references
-            (r'\b(?P<year>20\d{2})\b', 'year_only'),
-            
-            # Seasonal references
-            (r'\b(spring|summer|fall|autumn|winter)\s+(?P<year>\d{4})\b', 'season_year_en'),
-            
-            # Academic terms
-            (r'\b(semester|term|quarter)\s+(?P<number>[1-3])(?P<year>\d{4})?\b', 'academic_term_en'),
-            
-            # Fiscal references
-            (r'\b(fiscal year|FY)\s*(?P<year>\d{4})?\b', 'fiscal_year_en'),
+            (r'\b(in|within)\s+(?P<amount>\d+\.?\d*)\s*(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'in_period_en'),
+            (r'\b(in|within)\s+(?P<text_amount>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s*(?P<period>days?|weeks?|months?|years?|hours?|minutes?)\b', 'in_text_period_en'),
         ]
-        
+       
         # Keywords that typically precede deadlines in English (with weights for importance)
         self.english_deadline_keywords = {
             'deadline': 1.0, 'due': 0.95, 'submit by': 0.95, 'complete by': 0.92,
@@ -276,6 +253,17 @@ class EnhancedDeadlineExtractor:
             'ghanton': 'hours',
             'minute': 'minutes',
             'min': 'minutes',
+            'kal': 'tomorrow',
+            'aaj': 'today',
+            'parso': 'day after tomorrow',
+            'kal se pehle': 'yesterday',
+            'parson kal': 'day after tomorrow',
+            'raat': 'tonight',
+            'shaam': 'evening',
+            'subah': 'morning',
+            'dopahar': 'afternoon',
+            'baje': 'AM',  # or PM depending on context
+            'tak': 'by',
             
             # Prepositions
             'tak': 'by',
@@ -445,6 +433,13 @@ class EnhancedDeadlineExtractor:
         groups = date_info['groups']
         
         try:
+            if pattern_type in ['day_time_combined', 'day_time_ampm', 'relative_time_combined', 'relative_time_ampm', 'month_day_time']:
+                return self.parse_combined_datetime(date_info)
+            
+            # Handle context-based time expressions
+            if pattern_type == 'by_context_time':
+                return self.parse_context_time(date_info)
+            
             if pattern_type in ['mm/dd/yyyy', 'dd/mm/yyyy']:
                 if pattern_type == 'mm/dd/yyyy':
                     month = int(groups['month'])
@@ -761,6 +756,98 @@ class EnhancedDeadlineExtractor:
         
         return None
     
+    def parse_combined_datetime(self, date_info: Dict) -> Optional[datetime]:
+        """Parse combined date-time expressions like 'Monday 10 AM' or 'tomorrow 3:30 PM'."""
+        pattern_type = date_info['pattern_type']
+        groups = date_info['groups']
+        text = date_info['text'].lower()
+        
+        try:
+            # Extract time components
+            hour = int(groups.get('hour', 0))
+            minute = int(groups.get('minute', 0))
+            period = groups.get('period', '').upper()
+            
+            # Convert to 24-hour format if needed
+            if period in ['PM', 'pm'] and hour != 12:
+                hour += 12
+            elif period in ['AM', 'am'] and hour == 12:
+                hour = 0
+            
+            # Determine the base date
+            base_date = None
+            
+            if pattern_type in ['day_time_combined', 'day_time_ampm']:
+                # Extract day name from the match
+                day_match = re.search(r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', date_info['text'], re.IGNORECASE)
+                if day_match:
+                    day_name = day_match.group(1).lower()
+                    target_day = self.day_map[day_name]
+                    today = datetime.now()
+                    days_ahead = target_day - today.weekday()
+                    if days_ahead <= 0:
+                        days_ahead += 7
+                    base_date = today + timedelta(days_ahead)
+            
+            elif pattern_type in ['relative_time_combined', 'relative_time_ampm']:
+                # Extract relative word (tomorrow/today/kal/aaj)
+                relative_match = re.search(r'\b(tomorrow|today|kal|aaj)\b', text, re.IGNORECASE)
+                if relative_match:
+                    relative_word = relative_match.group(1).lower()
+                    today = datetime.now()
+                    if relative_word in ['tomorrow', 'kal']:
+                        base_date = today + timedelta(days=1)
+                    elif relative_word in ['today', 'aaj']:
+                        base_date = today
+            
+            elif pattern_type == 'month_day_time':
+                # Handle month + day + time
+                if 'month_name' in groups:
+                    month_name = groups['month_name'].lower()
+                    month = self.month_map[month_name]
+                else:
+                    month = int(groups['month'])
+                
+                day = int(groups['day'])
+                year = int(groups['year']) if groups.get('year') else datetime.now().year
+                base_date = datetime(year, month, day)
+            
+            if base_date:
+                # Combine date with time
+                return base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            
+        except (ValueError, KeyError):
+            pass
+        
+        return None
+    
+    def parse_context_time(self, date_info: Dict) -> Optional[datetime]:
+        """Parse context-based time expressions like 'by tonight' or 'by evening'."""
+        text = date_info['text'].lower()
+        today = datetime.now()
+        
+        # Define time mappings for different contexts
+        time_contexts = {
+            'tonight': (today, 23, 59),  # End of today
+            'evening': (today, 18, 0),   # 6 PM today
+            'shaam': (today, 18, 0),      # 6 PM today
+            'afternoon': (today, 15, 0),  # 3 PM today
+            'dopahar': (today, 14, 0),    # 2 PM today
+            'morning': (today, 9, 0),     # 9 AM today
+            'subah': (today, 9, 0),       # 9 AM today
+            'midnight': (today, 23, 59),  # End of today
+            'raat': (today, 23, 59),      # End of today
+            'eod': (today, 17, 0),        # 5 PM today
+            'cob': (today, 17, 0),        # 5 PM today
+            'end of day': (today, 17, 0), # 5 PM today
+        }
+        
+        for context_word, (base_date, hour, minute) in time_contexts.items():
+            if context_word in text:
+                return base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        return None
+    
     def find_deadline_context(self, text: str, date_start: int, date_length: int) -> Tuple[Optional[str], float]:
         """
         Find the context around a date to determine if it's a deadline.
@@ -905,14 +992,30 @@ class EnhancedDeadlineExtractor:
         return 'unclear'
 
     def extract_deadlines(self, text: str) -> List[Dict]:
-        """Extract all deadlines from text with confidence scores."""
+        """Extract all deadlines from text with confidence scores, merging overlapping matches."""
         deadlines = []
         
         # Extract dates with regex
         regex_dates = self.extract_dates_regex(text)
         
+        # Remove overlapping matches (keep the most specific/longest match)
+        filtered_dates = []
+        for i, date_info in enumerate(regex_dates):
+            is_overlapping = False
+            for j, other_date in enumerate(regex_dates):
+                if i != j:
+                    # Check if current match is contained within another match
+                    if (date_info['start'] >= other_date['start'] and 
+                        date_info['end'] <= other_date['end'] and
+                        len(date_info['text']) < len(other_date['text'])):
+                        is_overlapping = True
+                        break
+            
+            if not is_overlapping:
+                filtered_dates.append(date_info)
+        
         # Process each date to determine if it's a deadline
-        for date_info in regex_dates:
+        for date_info in filtered_dates:
             date_text = date_info['text']
             
             # Try to parse the date
@@ -924,14 +1027,17 @@ class EnhancedDeadlineExtractor:
                 # Check if this date is in a deadline context
                 context, confidence = self.find_deadline_context(text, date_info['start'], len(date_text))
                 
-                # Only include deadlines with sufficient confidence (above 0.4)
-                # This helps filter out false positives like birth dates
-                # But allow relative dates with no context if they have sufficient inherent value
-                effective_confidence = confidence if context else 0.45  # Slightly higher for relative dates
+                # Boost confidence for certain pattern types
+                if date_info['pattern_type'] in ['by_context_time', 'day_time_combined', 'day_time_ampm', 
+                                                   'relative_time_combined', 'relative_time_ampm']:
+                    confidence = max(confidence, 0.85)
+                
+                # Only include deadlines with sufficient confidence
+                effective_confidence = confidence if context else 0.45
                 if effective_confidence > 0.4:
                     deadline = {
                         'date_text': date_text,
-                        'parsed_date': parsed_date.strftime('%Y-%m-%d'),
+                        'parsed_date': parsed_date.strftime('%Y-%m-%d %H:%M:%S') if parsed_date.hour or parsed_date.minute else parsed_date.strftime('%Y-%m-%d'),
                         'context': context,
                         'confidence': effective_confidence,
                         'position': date_info['start']
@@ -939,10 +1045,19 @@ class EnhancedDeadlineExtractor:
                     
                     deadlines.append(deadline)
         
-        # Sort by position in text
+        # Sort by position in text and remove duplicates with same parsed_date
         deadlines.sort(key=lambda x: x['position'])
         
-        return deadlines
+        # Remove duplicate parsed dates (keep first occurrence)
+        seen_dates = set()
+        unique_deadlines = []
+        for deadline in deadlines:
+            date_key = deadline['parsed_date']
+            if date_key not in seen_dates:
+                seen_dates.add(date_key)
+                unique_deadlines.append(deadline)
+        
+        return unique_deadlines
     
     def extract_deadlines_from_message(self, message):
         """Extract deadlines from a message in JSON format or string."""
